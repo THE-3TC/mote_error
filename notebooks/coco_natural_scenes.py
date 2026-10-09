@@ -42,11 +42,28 @@ def _():
     # --- Point these at your data -------------------------------------------------
     DATA_DIR = "data/coco_data"  # <name>_<image_id>.jpg and <image_id>.png panoptic masks
     GT_JSON = "data/coco_data/coco_panoptic_gt.json"  # scripts/extract_coco_panoptic_gt.py
-    PRED_DIR = "outputs/coco_demo"  # scripts/run_coco_panoptic_models.py
+    PRED_DIR = "data/coco_data"  # <model>/<image_id>/ from scripts/run_coco_panoptic_models.py
 
-    # Mock predictions from perturbed GT, shown alongside any real model outputs
-    USE_MOCKS = True
-    return DATA_DIR, GT_JSON, PRED_DIR, USE_MOCKS
+    # Segments to split into separate SSUs for the "split" GT variant: {image_id: category}.
+    # COCO labels the two trains in 233341 as one instance; whether they are one coupled
+    # train or two parked trains is not clear from the image.
+    SPLIT_SEGMENTS = {233341: "train"}
+
+    # Display names for tables and figures
+    IMAGE_NAMES = {325871: "Elephant", 233341: "Train"}
+    MODEL_NAMES = {"yolo26": "YOLO26", "mask2former": "Mask2Former"}
+
+    # Scope used for the LaTeX tables and saved figures; "things" is fair to both models
+    PAPER_SCOPE = "things"
+    return (
+        DATA_DIR,
+        GT_JSON,
+        IMAGE_NAMES,
+        MODEL_NAMES,
+        PAPER_SCOPE,
+        PRED_DIR,
+        SPLIT_SEGMENTS,
+    )
 
 
 @app.cell
@@ -60,6 +77,7 @@ def _():
     import pandas as pd
     from PIL import Image
 
+    from cotescore.class_metrics import class_confusion_counts, finalize_class_counts
     from cotescore.layout import cote_score
     from cotescore.types import MaskInstance
     from cotescore.visualisation import compute_cote_masks, visualize_cote_states
@@ -67,9 +85,11 @@ def _():
         Image,
         MaskInstance,
         Path,
+        class_confusion_counts,
         compute_cote_masks,
         cote_score,
         defaultdict,
+        finalize_class_counts,
         json,
         np,
         pd,
@@ -92,7 +112,7 @@ def _(mo):
 
 
 @app.cell
-def _(DATA_DIR, GT_JSON, Image, Path, json, np):
+def _(DATA_DIR, GT_JSON, IMAGE_NAMES, Image, Path, json, np):
     def rgb2id(png):
         png = png.astype(np.uint32)
         return png[..., 0] + 256 * png[..., 1] + 256 * 256 * png[..., 2]
@@ -109,6 +129,8 @@ def _(DATA_DIR, GT_JSON, Image, Path, json, np):
         _jpg = next(Path(DATA_DIR).glob(f"*_{_id}.jpg"))
         _png = np.array(Image.open(Path(DATA_DIR) / _ann["file_name"]).convert("RGB"))
         samples[_id] = {
+            "image_id": _id,
+            "name": IMAGE_NAMES.get(_id, str(_id)),
             "image_path": _jpg,
             "image": np.array(Image.open(_jpg).convert("RGB")),
             "pan_map": rgb2id(_png),
@@ -226,123 +248,120 @@ def _(cat_colour, cat_name, label_segments, overlay_masks, plt, samples):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Predictions
+    ### One train or two?
 
-    Every prediction is a dict `{"mask", "category_id", "score"}` at the image's native
-    resolution. Real model outputs are loaded from `PRED_DIR/<model>/<image_id>.npz`. Class
-    names are mapped to COCO panoptic category ids by name, and anything unmapped gets `-1`.
+    COCO labels the two trains in image 233341 as a **single** `train` instance. From the
+    image it is not clear whether this is one coupled train or two trains parked nose to
+    nose. What counts as one unit is a labelling decision, and it is exactly what SSUs make
+    explicit.
 
-    The **mock** predictions start from a perfect copy of the ground truth and apply one
-    perturbation each:
+    To see how much each metric depends on that decision, everything below is scored against
+    two versions of the ground truth:
 
-    | mock | perturbation | what COTe should do | what PQ should do |
-    |---|---|---|---|
-    | `mock_perfect` | none | 1.0 | 1.0 |
-    | `mock_shifted` | every segment translated by 5% of the width, 3% of the height | lose coverage, gain trespass | lower SQ, some segments drop below IoU 0.5 |
-    | `mock_merged` | largest thing merged with a touching thing (or, failing that, the most-adjacent segment) | trespass | a TP becomes an FN |
-    | `mock_split` | largest thing cut into three vertical strips of equal area | unchanged: same pixels, same unit | the TP becomes an FN and three FPs |
-    | `mock_duplicated` | every thing predicted twice, the copy dilated by 5 px | overlap | nothing: PQ drops overlapping duplicates before scoring |
-    | `mock_dropped` | largest thing removed | lose coverage | one FN |
+    - `coco`: the annotation as published.
+    - `split`: each segment named in `SPLIT_SEGMENTS` is cut at the widest run of empty
+      columns inside it, giving one SSU per train.
+
+    The annotation also includes the "Solingen Hbf" station sign in the right-hand train. Both
+    variants keep it, so the models are penalised slightly for correctly leaving it out.
     """)
     return
 
 
 @app.cell
-def _(categories, np):
-    def gt_segments(sample):
-        return [
-            {
+def _(SPLIT_SEGMENTS, categories, np):
+    GT_VARIANTS = ("coco", "split")
+
+    def split_at_gap(mask):
+        """Split a mask into left and right parts at its widest run of empty columns."""
+        cols = np.nonzero(mask.any(axis=0))[0]
+        gaps = np.diff(cols)
+        k = int(np.argmax(gaps))
+        if gaps[k] <= 1:
+            raise ValueError("Segment has no empty-column gap to split at")
+        left = mask.copy()
+        left[:, (cols[k] + cols[k + 1]) // 2 :] = False
+        return [left, mask & ~left]
+
+    def gt_segments(sample, variant="coco"):
+        split_name = SPLIT_SEGMENTS.get(sample["image_id"]) if variant == "split" else None
+        segs = []
+        for seg in sample["segments"]:
+            base = {
                 "mask": sample["pan_map"] == seg["id"],
                 "category_id": seg["category_id"],
                 "isthing": bool(categories[seg["category_id"]]["isthing"]),
                 "iscrowd": bool(seg["iscrowd"]),
             }
-            for seg in sample["segments"]
-        ]
-
-    def dilate(mask, r):
-        out = mask.copy()
-        for _ in range(r):
-            grown = out.copy()
-            grown[1:] |= out[:-1]
-            grown[:-1] |= out[1:]
-            grown[:, 1:] |= out[:, :-1]
-            grown[:, :-1] |= out[:, 1:]
-            out = grown
-        return out
-
-    def mock_predictions(segs):
-        h, w = segs[0]["mask"].shape
-        base = [
-            {"mask": s["mask"], "category_id": s["category_id"], "score": 1.0}
-            for s in segs
-            if not s["iscrowd"]
-        ]
-        things = sorted(
-            [p for p, s in zip(base, [s for s in segs if not s["iscrowd"]]) if s["isthing"]],
-            key=lambda p: -p["mask"].sum(),
-        )
-        largest = things[0]
-        rest = [p for p in base if p is not largest]
-
-        dx, dy = int(0.05 * w), int(0.03 * h)
-
-        def shift(m):
-            out = np.zeros_like(m)
-            out[dy:, dx:] = m[: h - dy, : w - dx]
-            return out
-
-        # Prefer a touching thing (e.g. the rider on the elephant) so the merge is also
-        # visible at the things-only scope; fall back to whichever segment touches most.
-        ring = dilate(largest["mask"], 3) & ~largest["mask"]
-        touching_things = [p for p in things[1:] if (p["mask"] & ring).any()]
-        neighbour = max(touching_things or rest, key=lambda p: (p["mask"] & ring).sum())
-
-        # Three vertical strips of equal area, so no strip can reach IoU > 0.5.
-        _ys, _xs = np.nonzero(largest["mask"])
-        _order = np.argsort(_xs, kind="stable")
-        strips = []
-        for _part in np.array_split(_order, 3):
-            _m = np.zeros_like(largest["mask"])
-            _m[_ys[_part], _xs[_part]] = True
-            strips.append(dict(largest, mask=_m))
-
-        return {
-            "mock_perfect": base,
-            "mock_shifted": [dict(p, mask=shift(p["mask"])) for p in base],
-            "mock_merged": [p for p in rest if p is not neighbour]
-            + [dict(largest, mask=largest["mask"] | neighbour["mask"])],
-            "mock_split": rest + strips,
-            "mock_duplicated": base
-            + [dict(p, mask=dilate(p["mask"], 5), score=0.9) for p in things],
-            "mock_dropped": rest,
-        }
-    return gt_segments, mock_predictions
+            if categories[seg["category_id"]]["name"] == split_name:
+                segs += [dict(base, mask=_m) for _m in split_at_gap(base["mask"])]
+            else:
+                segs.append(base)
+        return segs
+    return GT_VARIANTS, gt_segments
 
 
 @app.cell
 def _(
-    PRED_DIR,
-    Path,
-    USE_MOCKS,
+    GT_VARIANTS,
+    SPLIT_SEGMENTS,
+    cat_name,
     gt_segments,
-    mock_predictions,
-    name_to_cat,
-    np,
+    label_segments,
+    overlay_masks,
+    plt,
     samples,
 ):
+    _fig, _axes = plt.subplots(
+        len(SPLIT_SEGMENTS), len(GT_VARIANTS), figsize=(12, 6 * len(SPLIT_SEGMENTS)), squeeze=False
+    )
+    for _id, _row in zip(SPLIT_SEGMENTS, _axes):
+        _s = samples[_id]
+        for _variant, _ax in zip(GT_VARIANTS, _row):
+            _things = [g for g in gt_segments(_s, _variant) if g["isthing"]]
+            _masks = [g["mask"] for g in _things]
+            # Colour by instance, not category, so the split is visible.
+            _cmap = plt.get_cmap("tab10")
+            _colours = [tuple(int(255 * v) for v in _cmap(_i)[:3]) for _i in range(len(_masks))]
+            _ax.imshow(overlay_masks(_s["image"], _masks, _colours))
+            label_segments(_ax, _masks, [cat_name(g["category_id"]) for g in _things])
+            _ax.set_title(f"{_id}, GT = {_variant}: {len(_things)} thing SSUs")
+            _ax.axis("off")
+    _fig.tight_layout()
+    _fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 2. Predictions
+
+    Every prediction is a dict `{"mask", "category_id", "score"}` at the image's native
+    resolution. Real model outputs are loaded from `PRED_DIR/<model>/<image_id>` (an `.npz`, or a folder of `.npy` files). Class
+    names are mapped to COCO panoptic category ids by name, and anything unmapped gets `-1`.
+    """)
+    return
+
+
+@app.cell
+def _(PRED_DIR, Path, name_to_cat, np):
     predictions = {}  # model -> image_id -> list of prediction dicts
 
-    if USE_MOCKS:
-        for _id, _s in samples.items():
-            for _model, _preds in mock_predictions(gt_segments(_s)).items():
-                predictions.setdefault(_model, {})[_id] = _preds
+    def _load_arrays(path):
+        """A prediction is either <image_id>.npz or an unzipped <image_id>/ of .npy files."""
+        if path.suffix == ".npz":
+            return np.load(path)
+        return {_k: np.load(path / f"{_k}.npy") for _k in ("masks", "labels", "scores")}
 
     _unmapped = set()
     _root = Path(PRED_DIR)
-    for _model_dir in sorted(_root.iterdir()) if _root.exists() else []:
-        for _f in sorted(_model_dir.glob("*.npz")):
-            _d = np.load(_f)
+    _model_dirs = [p for p in sorted(_root.iterdir()) if p.is_dir()] if _root.exists() else []
+    for _model_dir in _model_dirs:
+        for _f in sorted(_model_dir.iterdir()):
+            if not _f.stem.isdigit():
+                continue
+            _d = _load_arrays(_f)
             _preds = []
             for _m, _label, _score in zip(_d["masks"], _d["labels"], _d["scores"]):
                 _cat = name_to_cat.get(str(_label), -1)
@@ -432,9 +451,12 @@ def _(defaultdict, np):
 
 @app.cell
 def _(
+    GT_VARIANTS,
     MaskInstance,
     categories,
+    class_confusion_counts,
     cote_score,
+    finalize_class_counts,
     gt_segments,
     np,
     panoptic_quality,
@@ -444,14 +466,29 @@ def _(
 ):
     SCOPES = ("all", "things")
 
+    def cote_f1(gt_map, gt, preds):
+        """Class-aware COTe F1: micro F1 of per-class pixel coverage precision and recall.
+
+        The class list is the union of GT and predicted classes, so pixels predicted as a
+        class absent from the GT count against precision rather than being dropped.
+        """
+        ssu_to_class = {_ssu: g["category_id"] for _ssu, g in enumerate(gt, start=1)}
+        masks = [
+            MaskInstance(mask=p["mask"], label=p["category_id"], pred_id=i)
+            for i, p in enumerate(preds)
+        ]
+        classes = sorted(set(ssu_to_class.values()) | {m.label for m in masks})
+        counts = class_confusion_counts(gt_map, ssu_to_class, masks, classes)
+        return finalize_class_counts(counts).micro_f1
+
     def in_scope(cat_id, scope):
         if scope == "all":
             return True
         return cat_id in categories and bool(categories[cat_id]["isthing"])
 
-    def scoped_inputs(sample, preds, scope):
+    def scoped_inputs(sample, preds, scope, variant):
         """GT SSU map, GT segments and predictions restricted to one scope."""
-        gt = [g for g in gt_segments(sample) if in_scope(g["category_id"], scope)]
+        gt = [g for g in gt_segments(sample, variant) if in_scope(g["category_id"], scope)]
         gt_map = np.zeros(sample["pan_map"].shape, dtype=np.int32)
         for _ssu, g in enumerate(gt, start=1):
             gt_map[g["mask"]] = _ssu
@@ -462,33 +499,72 @@ def _(
         for _id, _preds in _by_image.items():
             _s = samples[_id]
             _void = _s["pan_map"] == 0
-            for _scope in SCOPES:
-                _gt_map, _gt, _p = scoped_inputs(_s, _preds, _scope)
-                _masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(_p)]
-                if not _masks:
-                    _masks = [MaskInstance(mask=np.zeros_like(_void), pred_id=0)]
-                _cote, _c, _o, _t, _e = cote_score(_gt_map, _masks)
-                _pq, _sq, _rq = panoptic_quality(_gt, _p, _void)
-                _rows.append(
-                    {
-                        "model": _model,
-                        "image_id": _id,
-                        "scope": _scope,
-                        "cote": _cote,
-                        "coverage": _c,
-                        "overlap": _o,
-                        "trespass": _t,
-                        "excess": _e,
-                        "pq": _pq,
-                        "sq": _sq,
-                        "rq": _rq,
-                        "n_gt": len(_gt),
-                        "n_pred": len(_p),
-                    }
-                )
+            for _variant in GT_VARIANTS:
+                for _scope in SCOPES:
+                    _gt_map, _gt, _p = scoped_inputs(_s, _preds, _scope, _variant)
+                    _masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(_p)]
+                    if not _masks:
+                        _masks = [MaskInstance(mask=np.zeros_like(_void), pred_id=0)]
+                    _cote, _c, _o, _t, _e = cote_score(_gt_map, _masks)
+                    _pq, _sq, _rq = panoptic_quality(_gt, _p, _void)
+                    _rows.append(
+                        {
+                            "model": _model,
+                            "image": _s["name"],
+                            "image_id": _id,
+                            "gt_variant": _variant,
+                            "scope": _scope,
+                            "cote": _cote,
+                            "coverage": _c,
+                            "overlap": _o,
+                            "trespass": _t,
+                            "excess": _e,
+                            "cote_f1": cote_f1(_gt_map, _gt, _p),
+                            "pq": _pq,
+                            "sq": _sq,
+                            "rq": _rq,
+                            "n_gt": len(_gt),
+                            "n_pred": len(_p),
+                        }
+                    )
     scores_df = pd.DataFrame(_rows)
-    scores_df.round(3)
+    scores_df.drop(columns="image_id").round(3)
     return SCOPES, scoped_inputs, scores_df
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Does the answer depend on the train question?
+
+    The same predictions are scored against both ground truths at the `things` scope, which
+    is fair to both models.
+
+    - **Mask2Former** predicts one mask per train. Each mask sits inside a single SSU under
+      either ground truth, so COTe does not change: predicting finer units than the ground
+      truth costs nothing. PQ does change, because the one-to-one match fails against the
+      single COCO segment.
+    - **YOLO26** predicts one mask per train plus a low-confidence mask covering both. That
+      mask is overlap under either ground truth. Under `split` it also crosses from one train
+      into the other, so COTe adds trespass. PQ never sees this mask: making the predictions
+      non-overlapping removes it before matching, so PQ *rises* under `split`.
+    """)
+    return
+
+
+@app.cell
+def _(SPLIT_SEGMENTS, scores_df):
+    _cols = [
+        "cote", "coverage", "overlap", "trespass", "cote_f1", "pq", "sq", "rq", "n_gt", "n_pred"
+    ]
+    variant_df = (
+        scores_df[scores_df.image_id.isin(SPLIT_SEGMENTS) & (scores_df.scope == "things")]
+        .set_index(["image", "model", "gt_variant"])[_cols]
+        .sort_index()
+        .round(3)
+    )
+    variant_df
+    return
 
 
 @app.cell(hide_code=True)
@@ -504,39 +580,41 @@ def _(mo):
 
 
 @app.cell
-def _(SCOPES, mo):
+def _(GT_VARIANTS, SCOPES, mo):
     scope_picker = mo.ui.dropdown(options=list(SCOPES), value="all", label="Scope")
-    scope_picker
-    return (scope_picker,)
+    gt_picker = mo.ui.dropdown(options=list(GT_VARIANTS), value="coco", label="GT")
+    mo.hstack([scope_picker, gt_picker], justify="start")
+    return gt_picker, scope_picker
 
 
 @app.cell
-def _(plt, scope_picker, scores_df):
-    _df = scores_df[scores_df.scope == scope_picker.value]
+def _(gt_picker, plt, scope_picker, scores_df):
+    _df = scores_df[(scores_df.scope == scope_picker.value) & (scores_df.gt_variant == gt_picker.value)]
     _models = list(dict.fromkeys(scores_df.model))  # fixed order, so colours never shift
-    _markers = dict(zip(sorted(_df.image_id.unique()), ["o", "s", "^", "D"]))
+    _markers = dict(zip(list(dict.fromkeys(scores_df.image)), ["o", "s", "^", "D"]))
+    _first = next(iter(_markers))
     _cmap = plt.get_cmap("tab10")
 
     _fig, _ax = plt.subplots(figsize=(7, 7))
     for _i, _model in enumerate(_models):
-        for _id, _grp in _df[_df.model == _model].groupby("image_id"):
+        for _image, _grp in _df[_df.model == _model].groupby("image"):
             _ax.scatter(
                 _grp.pq,
                 _grp.cote,
                 color=_cmap(_i % 10),
-                marker=_markers[_id],
+                marker=_markers[_image],
                 s=70,
                 edgecolor="white",
                 linewidth=1,
-                label=_model if _id == min(_markers) else None,
+                label=_model if _image == _first else None,
             )
-    for _id, _mk in _markers.items():
-        _ax.scatter([], [], marker=_mk, color="grey", label=f"image {_id}")
+    for _image, _mk in _markers.items():
+        _ax.scatter([], [], marker=_mk, color="grey", label=_image)
     #_ax.plot([0, 1], [0, 1], "k--", linewidth=1)
     #_ax.set_xlim(-0.05, 1.05)
     _ax.set_xlabel("PQ")
     _ax.set_ylabel("COTe")
-    _ax.set_title(f"COTe vs PQ, scope = {scope_picker.value}")
+    _ax.set_title(f"COTe vs PQ, scope = {scope_picker.value}, GT = {gt_picker.value}")
     _ax.grid(alpha=0.3)
     _ax.legend(fontsize=8, loc="lower right")
     _fig
@@ -565,78 +643,243 @@ def _(mo):
 
 
 @app.cell
-def _(SCOPES, mo, predictions, samples):
-    model_picker = mo.ui.dropdown(
-        options=list(predictions), value=next(iter(predictions)), label="Model"
-    )
-    image_picker = mo.ui.dropdown(
-        options=[str(i) for i in samples], value=str(next(iter(samples))), label="Image"
-    )
-    view_scope_picker = mo.ui.dropdown(options=list(SCOPES), value="all", label="Scope")
-    mo.hstack([model_picker, image_picker, view_scope_picker], justify="start")
-    return image_picker, model_picker, view_scope_picker
-
-
-@app.cell
 def _(
     MaskInstance,
     cat_colour,
     cat_name,
     compute_cote_masks,
-    image_picker,
     label_segments,
-    model_picker,
     np,
     overlay_masks,
+    visualize_cote_states,
+):
+    def draw_segments(ax, sample, segs):
+        """Segments over the image, coloured and labelled by category."""
+        masks = [g["mask"] for g in segs]
+        ax.imshow(overlay_masks(sample["image"], masks, [cat_colour(g["category_id"]) for g in segs]))
+        label_segments(ax, masks, [cat_name(g["category_id"]) for g in segs])
+        ax.axis("off")
+
+    def draw_cote(ax, sample, gt_map, preds):
+        """COTe pixel states over the image, with a legend."""
+        masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(preds)] or [
+            MaskInstance(mask=np.zeros(gt_map.shape, dtype=bool), pred_id=0)
+        ]
+        patches = visualize_cote_states(
+            sample["image"], compute_cote_masks(gt_map, masks), ax=ax, show_missing=True
+        )
+        ax.legend(handles=patches, loc="upper right", fontsize=8, framealpha=0.9)
+        ax.axis("off")
+    return draw_cote, draw_segments
+
+
+@app.cell
+def _(GT_VARIANTS, MODEL_NAMES, SCOPES, mo, predictions, samples):
+    model_picker = mo.ui.dropdown(
+        options={MODEL_NAMES.get(m, m): m for m in predictions},
+        value=MODEL_NAMES.get(next(iter(predictions)), next(iter(predictions))),
+        label="Model",
+    )
+    image_picker = mo.ui.dropdown(
+        options={s["name"]: i for i, s in samples.items()},
+        value=next(iter(samples.values()))["name"],
+        label="Image",
+    )
+    view_scope_picker = mo.ui.dropdown(options=list(SCOPES), value="all", label="Scope")
+    view_gt_picker = mo.ui.dropdown(options=list(GT_VARIANTS), value="coco", label="GT")
+    mo.hstack([model_picker, image_picker, view_scope_picker, view_gt_picker], justify="start")
+    return image_picker, model_picker, view_gt_picker, view_scope_picker
+
+
+@app.cell
+def _(
+    draw_cote,
+    draw_segments,
+    image_picker,
+    model_picker,
     plt,
     predictions,
     samples,
     scoped_inputs,
     scores_df,
+    view_gt_picker,
     view_scope_picker,
-    visualize_cote_states,
 ):
-    _id = int(image_picker.value)
+    _id = image_picker.value
     _model = model_picker.value
     _scope = view_scope_picker.value
+    _variant = view_gt_picker.value
     _s = samples[_id]
-    _gt_map, _gt, _p = scoped_inputs(_s, predictions[_model].get(_id, []), _scope)
+    _gt_map, _gt, _p = scoped_inputs(_s, predictions[_model].get(_id, []), _scope, _variant)
     _row = scores_df[
-        (scores_df.model == _model) & (scores_df.image_id == _id) & (scores_df.scope == _scope)
+        (scores_df.model == _model)
+        & (scores_df.image_id == _id)
+        & (scores_df.scope == _scope)
+        & (scores_df.gt_variant == _variant)
     ].iloc[0]
 
     _fig, (_ax_gt, _ax_pred, _ax_cote) = plt.subplots(1, 3, figsize=(20, 9))
-
-    _gt_masks = [g["mask"] for g in _gt]
-    _ax_gt.imshow(
-        overlay_masks(_s["image"], _gt_masks, [cat_colour(g["category_id"]) for g in _gt])
-    )
-    label_segments(_ax_gt, _gt_masks, [cat_name(g["category_id"]) for g in _gt])
-    _ax_gt.set_title(f"GT ({_scope}): {len(_gt)} segments")
-
-    _pred_masks = [p["mask"] for p in _p]
-    _ax_pred.imshow(
-        overlay_masks(_s["image"], _pred_masks, [cat_colour(p["category_id"]) for p in _p])
-    )
-    label_segments(_ax_pred, _pred_masks, [cat_name(p["category_id"]) for p in _p])
+    draw_segments(_ax_gt, _s, _gt)
+    _ax_gt.set_title(f"GT ({_variant}, {_scope}): {len(_gt)} segments")
+    draw_segments(_ax_pred, _s, _p)
     _ax_pred.set_title(f"{_model}: {len(_p)} segments")
-
-    _masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(_p)] or [
-        MaskInstance(mask=np.zeros(_gt_map.shape, dtype=bool), pred_id=0)
-    ]
-    _patches = visualize_cote_states(
-        _s["image"], compute_cote_masks(_gt_map, _masks), ax=_ax_cote, show_missing=True
-    )
-    _ax_cote.legend(handles=_patches, loc="upper right", fontsize=8, framealpha=0.9)
+    draw_cote(_ax_cote, _s, _gt_map, _p)
     _ax_cote.set_title(
         f"COTe {_row.cote:.3f} (C {_row.coverage:.2f}, O {_row.overlap:.2f}, "
         f"T {_row.trespass:.2f}, E {_row.excess:.2f})\n"
         f"PQ {_row.pq:.3f} (SQ {_row.sq:.2f}, RQ {_row.rq:.2f})"
     )
-    for _ax in (_ax_gt, _ax_pred, _ax_cote):
-        _ax.axis("off")
     _fig.tight_layout()
     _fig
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Tables and figures for the paper
+
+    One LaTeX table per image, and one untitled figure each for the ground truth, each
+    model's predictions and each model's COTe pixel states. Both use the published COCO ground truth
+    (not the `split` version) at `PAPER_SCOPE`.
+
+    Toggle on to write them to `data/figures/coco_natural_scenes/`, figures at 300 dpi. Off
+    by default, so simply running the notebook writes nothing.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    save_outputs = mo.ui.checkbox(
+        value=False,
+        label="Save tables and figures to `data/figures/coco_natural_scenes`",
+    )
+    save_outputs
+    return (save_outputs,)
+
+
+@app.cell
+def _(Path, save_outputs):
+    try:
+        _root = Path(__file__).resolve().parent.parent
+    except NameError:  # no __file__ in some marimo contexts
+        _root = Path.cwd()
+    OUTPUT_DIR = _root / "data" / "figures" / "coco_natural_scenes"
+
+    def save_figure(fig, name):
+        """Write ``fig`` to OUTPUT_DIR/<name>.png at 300 dpi, if enabled."""
+        if not save_outputs.value:
+            return
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        _path = OUTPUT_DIR / f"{name}.png"
+        fig.savefig(_path, dpi=300, bbox_inches="tight")
+        print(f"saved {_path}")
+
+    def save_text(text, name):
+        """Write ``text`` to OUTPUT_DIR/<name>, if enabled."""
+        if not save_outputs.value:
+            return
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (OUTPUT_DIR / name).write_text(text)
+        print(f"saved {OUTPUT_DIR / name}")
+    return save_figure, save_text
+
+
+@app.cell
+def _(PAPER_SCOPE, scores_df):
+    scores_df[(scores_df.gt_variant == "coco") & (scores_df.scope == PAPER_SCOPE)]
+    return
+
+
+@app.cell
+def _(MODEL_NAMES, PAPER_SCOPE, mo, save_text, scores_df):
+    import latex_tables as _lt
+
+    _cols = {
+        "cote": "COTe",
+        "coverage": "Coverage",
+        "overlap": "Overlap",
+        "trespass": "Trespass",
+        "excess": "Excess",
+        "cote_f1": "COTe F1",
+        "pq": "PQ",
+        "sq": "SQ",
+        "rq": "RQ",
+    }
+    _df = scores_df[(scores_df.gt_variant == "coco") & (scores_df.scope == PAPER_SCOPE)]
+
+    _tex = []
+    for _image, _grp in _df.groupby("image", sort=False):
+        _body = _lt.bold_best_cols(
+            _grp.set_index(_grp.model.map(lambda m: MODEL_NAMES.get(m, m)))[list(_cols)]
+            .astype(float)
+            .rename(columns=_cols)
+            .rename_axis("Model"),
+            lower_cols=["Overlap", "Trespass", "Excess"],
+            fmt="{:.2f}",
+        )
+        _table = _lt.latex_table(
+            _body,
+            caption=(
+                f"COTe and panoptic quality on the COCO {_image.lower()} image "
+                f"({PAPER_SCOPE} scope). Overlap, trespass and excess are lower-is-better."
+            ),
+            label=f"tab:coco_{_image.lower()}",
+            echo=False,
+        )
+        save_text(_table, f"table_{_image.lower()}.tex")
+        _tex.append(_table)
+
+    mo.md("\n\n".join(f"```latex\n{t}\n```" for t in _tex))
+    return
+
+
+@app.cell
+def _(
+    MODEL_NAMES,
+    PAPER_SCOPE,
+    draw_cote,
+    draw_segments,
+    mo,
+    plt,
+    predictions,
+    samples,
+    save_figure,
+    scoped_inputs,
+):
+    def _single(sample):
+        """A figure with one axes sized to the image's aspect ratio."""
+        _h, _w = sample["image"].shape[:2]
+        return plt.subplots(figsize=(6, 6 * _h / _w))
+
+    _rows = []
+    for _id, _s in samples.items():
+        _stem = _s["name"].lower()
+        _row = []
+
+        _gt_map, _gt, _ = scoped_inputs(_s, [], PAPER_SCOPE, "coco")
+        _fig, _ax = _single(_s)
+        draw_segments(_ax, _s, _gt)
+        save_figure(_fig, f"gt_{_stem}")
+        _row.append(_fig)
+
+        for _model, _by_image in predictions.items():
+            _name = MODEL_NAMES.get(_model, _model)
+            _, _, _p = scoped_inputs(_s, _by_image.get(_id, []), PAPER_SCOPE, "coco")
+
+            _fig, _ax = _single(_s)
+            draw_segments(_ax, _s, _p)
+            save_figure(_fig, f"pred_{_stem}_{_model}")
+            _row.append(_fig)
+
+            _fig, _ax = _single(_s)
+            draw_cote(_ax, _s, _gt_map, _p)
+            save_figure(_fig, f"cote_{_stem}_{_model}")
+            _row.append(_fig)
+
+        _rows.append(mo.hstack(_row, justify="start"))
+    mo.vstack(_rows)
     return
 
 

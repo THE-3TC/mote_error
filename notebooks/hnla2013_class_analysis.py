@@ -228,9 +228,9 @@ def _(mo):
     mo.md(r"""
     ## 2. Load predictions
 
-    Point `results_dir` at the CSVs downloaded from the cloud run
-    (`scripts/export_predictions.py --dataset-name hnla2013 --model ...`),
-    one file per model, e.g. `results/hnla2013_heron_predictions.csv`.
+    Reads the per-model prediction CSVs written by `scripts/benchmark_hnla2013.py`,
+    one file per model, from each backend's results folder, e.g.
+    `data/results/results_pytorch/hnla2013/doclinglayoutheron_predictions.csv`.
     """)
     return
 
@@ -238,7 +238,7 @@ def _(mo):
 @app.cell
 def _(Path, mo, pd):
     results_dir = Path("data/results")
-    csv_paths = sorted(results_dir.glob("hnla2013_*_predictions.csv"))
+    csv_paths = sorted(results_dir.glob("results_*/hnla2013/*_predictions.csv"))
 
     predictions_df = (
         pd.concat([pd.read_csv(p) for p in csv_paths], ignore_index=True)
@@ -248,7 +248,7 @@ def _(Path, mo, pd):
 
     mo.md(
         f"Found {len(csv_paths)} prediction file(s): "
-        + (", ".join(p.name for p in csv_paths) or "*(none — drop CSVs into `results/` first)*")
+        + (", ".join(p.name for p in csv_paths) or "*(none — drop CSVs into `data/results/results_*/hnla2013/` first)*")
     )
     return (predictions_df,)
 

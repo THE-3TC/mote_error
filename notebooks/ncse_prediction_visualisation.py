@@ -18,12 +18,12 @@ def _():
     from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
     from cotescore.metrics import cote_score, coverage, overlap, trespass, excess, mean_iou, f1
 
-    _data_dir = Path("data/file_predictions")
-    image_dir = Path("data/ncse_images")
+    _results_dir = Path("data/results")
+    image_dir = Path.home() / "fakenewslib/data/ncsev2/images"
 
-    yolo_df = pd.read_csv(_data_dir / "yolo_predictions.csv")
-    heron_df = pd.read_csv(_data_dir / "heron_predictions.csv")
-    ppdoc_l = pd.read_csv(_data_dir / "ppdoc_l_predictions.csv")
+    yolo_df = pd.read_csv(_results_dir / "results_pytorch/ncse/doclayout_yolo_predictions.csv")
+    heron_df = pd.read_csv(_results_dir / "results_pytorch/ncse/doclinglayoutheron_predictions.csv")
+    ppdoc_l = pd.read_csv(_results_dir / "results_ppdoc/ncse/ppdoclayout_l_predictions.csv")
     return (
         Image,
         Path,
