@@ -71,19 +71,21 @@ def _(Path):
     NCSE_json = "ncse/benchmark_all_results.json"
     HNLA_nosssu_json = "hnla2013_unique_ssu/benchmark_all_results.json"
     NCSE_nossu_json = "ncse_unique_ssu/benchmark_all_results.json"
+    spiritualist_json = "spiritualist/benchmark_all_results.json"
     return (
         HNLA_json,
         HNLA_nosssu_json,
         NCSE_json,
         NCSE_nossu_json,
         doclaynet_json,
+        spiritualist_json,
         ppdoc_results_folder,
         torch_results_folder,
     )
 
 
 @app.cell
-def _(json, pd, ppdoc_results_folder, torch_results_folder):
+def _(json, np, pd, ppdoc_results_folder, torch_results_folder):
 
     def create_results_table(filename):
         MODEL_NAME_MAP = {
@@ -96,6 +98,9 @@ def _(json, pd, ppdoc_results_folder, torch_results_folder):
 
         out_df = []
         for _folder in [ppdoc_results_folder, torch_results_folder]:
+            # Not every dataset is benchmarked in both environments (e.g. Spiritualist)
+            if not (_folder / filename).exists():
+                continue
             with open(_folder / filename, "r") as f:
                 _data = json.load(f)
             _df = pd.DataFrame.from_dict(_data["models"], orient="index")
@@ -117,7 +122,8 @@ def _(json, pd, ppdoc_results_folder, torch_results_folder):
         out_df = out_df.sort_index()
         return out_df
 
-    def df_to_latex_md(df, caption, label):
+    def df_to_latex_md(df, caption, label, cer=None):
+        """cer: per-model page-mean CER bounds (cer_lo, cer_hi); if None they come from the mean C, O, T."""
         col_rename = {
             "cot_score": "COTe",
             "coverage": "Coverage",
@@ -148,6 +154,14 @@ def _(json, pd, ppdoc_results_folder, torch_results_folder):
             lower_cols=lower_cols,
             fmt="{:.2f}",
         )
+        # Predicted CER range [max(1-C, O), 1-C+O+2T]
+        if cer is None:
+            _c, _o, _t = (df[k].astype(float) for k in ["coverage", "overlap", "trespass"])
+            _cer_lo, _cer_hi = np.maximum(1 - _c, _o), 1 - _c + _o + 2 * _t
+        else:
+            _cer = cer.set_axis(cer.index.astype(str)).reindex(df.index)
+            _cer_lo, _cer_hi = _cer["cer_lo"], _cer["cer_hi"]
+        df_fmt["CER"] = [f"{lo:.2f}--{hi:.2f}" for lo, hi in zip(_cer_lo, _cer_hi)]
         latex = latex_table(df_fmt, caption=caption, label=label, echo=False)
 
         return f"### LaTeX Table Output\n```latex\n{latex}\n```"
@@ -412,26 +426,76 @@ def _():
 
 
 @app.cell
-def _(df_to_latex_md, doclaynet_df, mo):
+def _(df_to_latex_md, doclaynet_df, mo, page_cer_mean_df):
     mo.md(
         df_to_latex_md(
-            doclaynet_df, caption="Model results for DocLayNet", label="tab:res_doclaynet"
+            doclaynet_df,
+            caption="Model results for DocLayNet",
+            label="tab:res_doclaynet",
+            cer=page_cer_mean_df.loc["DocLayNet"],
         )
     )
     return
 
 
 @app.cell
-def _(HNLA2013_df, df_to_latex_md, mo):
+def _(HNLA2013_df, df_to_latex_md, mo, page_cer_mean_df):
     mo.md(
-        df_to_latex_md(HNLA2013_df, caption="Model results for HNLA2013", label="tab:res_HNLA2013")
+        df_to_latex_md(
+            HNLA2013_df,
+            caption="Model results for HNLA2013",
+            label="tab:res_HNLA2013",
+            cer=page_cer_mean_df.loc["HNLA2013"],
+        )
     )
     return
 
 
 @app.cell
-def _(NCSE_df, df_to_latex_md, mo):
-    mo.md(df_to_latex_md(NCSE_df, caption="Model results for NCSE", label="tab:res_ncse"))
+def _(NCSE_df, df_to_latex_md, mo, page_cer_mean_df):
+    mo.md(
+        df_to_latex_md(
+            NCSE_df,
+            caption="Model results for NCSE",
+            label="tab:res_ncse",
+            cer=page_cer_mean_df.loc["NCSE"],
+        )
+    )
+    return
+
+
+@app.cell
+def _(
+    create_results_table,
+    df_to_latex_md,
+    mo,
+    ppdoc_results_folder,
+    spiritualist_json,
+    torch_results_folder,
+):
+    # Kept out of the cross-dataset analyses above; only the results table for now.
+    # No per-page results are saved, so its CER bounds come from the mean C, O, T.
+    if not any((_f / spiritualist_json).exists() for _f in [ppdoc_results_folder, torch_results_folder]):
+        _out = mo.md(
+            "**Spiritualist results not found.** Run `scripts/benchmark_spiritualist.py` "
+            "with `--output data/results/results_pytorch/spiritualist` (and "
+            "`results_ppdoc/spiritualist` for the PPDoc models)."
+        )
+    else:
+        spiritualist_df = create_results_table(spiritualist_json)
+        _out = mo.vstack(
+            [
+                spiritualist_df,
+                mo.md(
+                    df_to_latex_md(
+                        spiritualist_df,
+                        caption="Model results for the Spiritualist",
+                        label="tab:res_spiritualist",
+                    )
+                ),
+            ]
+        )
+    _out
     return
 
 
@@ -652,6 +716,7 @@ def _(
     HNLA_comparison_df,
     NCSE_comparison_df,
     doclaynet_comparison_df,
+    np,
     page_map_df,
     pd,
 ):
@@ -675,9 +740,35 @@ def _(
     ]
     page_cote_df = page_cote_df.merge(page_map_df, on=["dataset", "model", "filename"], how="left")
     page_cote_df["cot_score_floored"] = page_cote_df["cot_score"].clip(lower=0)
+    # Predicted CER bounds per page: [max(1-C, O), 1-C+O+2T]
+    page_cote_df["cer_lo"] = np.maximum(1 - page_cote_df["coverage"], page_cote_df["overlap"])
+    page_cote_df["cer_hi"] = (
+        1 - page_cote_df["coverage"] + page_cote_df["overlap"] + 2 * page_cote_df["trespass"]
+    )
     page_cote_df["dataset"] = pd.Categorical(page_cote_df["dataset"], DATASET_ORDER)
     page_cote_df["model"] = pd.Categorical(page_cote_df["model"], MODEL_ORDER)
-    return MODEL_COLOURS, MODEL_ORDER, page_cote_df
+    page_cer_mean_df = page_cote_df.groupby(["dataset", "model"], observed=True)[
+        ["cer_lo", "cer_hi"]
+    ].mean()
+    return MODEL_COLOURS, MODEL_ORDER, page_cer_mean_df, page_cote_df
+
+
+@app.cell
+def _(mo, page_cote_df):
+    # Median page-level results; Spiritualist is absent as only its dataset means are saved
+    _median_df = page_cote_df.groupby(["dataset", "model"], observed=True)[
+        [
+            "cot_score", "coverage", "overlap", "trespass", "excess", "mean_iou", "map", "f1_50",
+            "cer_lo", "cer_hi",
+        ]
+    ].median()
+    mo.vstack(
+        [
+            mo.vstack([mo.md(f"### {_ds} (median)"), _median_df.loc[_ds]])
+            for _ds in _median_df.index.get_level_values("dataset").unique()
+        ]
+    )
+    return
 
 
 @app.cell
@@ -720,7 +811,7 @@ def _(
         # Return a matplotlib figure: marimo does not display plotnine's own PNG output
         return plot.draw()
 
-    def mean_median_table(score_col):
+    def mean_median_table(score_col, higher_is_better=True):
         """Mean, median, their gap and the model rank under each, per dataset and model."""
         df = (
             page_cote_df.groupby(["dataset", "model"], observed=True)[score_col]
@@ -731,7 +822,7 @@ def _(
         for col in ["Mean", "Median"]:
             df[f"Rank ({col.lower()})"] = (
                 df.groupby("dataset", observed=True)[col]
-                .rank(ascending=False, method="min")
+                .rank(ascending=not higher_is_better, method="min")
                 .astype(int)
             )
         df["model"] = df["model"].astype(str)
@@ -890,6 +981,62 @@ def _(mean_median_latex_md, metric_mean_median, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    # Mean vs median for the COTe components and CER bounds
+
+    Coverage, Overlap, Trespass and Excess, plus the per-page predicted CER bounds
+    $\max(1-C, O)$ and $1-C+O+2T$. Only Coverage is higher-is-better, so the ranks for the
+    rest put the lowest value first.
+    """)
+    return
+
+
+@app.cell
+def _(mean_median_table):
+    # (label, higher is better)
+    COMPONENT_METRICS = {
+        "coverage": ("Coverage", True),
+        "overlap": ("Overlap", False),
+        "trespass": ("Trespass", False),
+        "excess": ("Excess", False),
+        "cer_lo": ("CER lower", False),
+        "cer_hi": ("CER upper", False),
+    }
+    component_mean_median = {
+        _label: mean_median_table(_col, higher_is_better=_hib)
+        for _col, (_label, _hib) in COMPONENT_METRICS.items()
+    }
+    return (component_mean_median,)
+
+
+@app.cell
+def _(component_mean_median, mo):
+    mo.vstack(
+        [
+            mo.vstack([mo.md(f"### {_label}"), _df])
+            for _label, _df in component_mean_median.items()
+        ]
+    )
+    return
+
+
+@app.cell
+def _(component_mean_median, mean_median_latex_md, mo):
+    mo.vstack(
+        [
+            mean_median_latex_md(
+                _df,
+                caption=f"Mean and median page-level {_label} per model and dataset",
+                label=f"tab:{_label.lower().replace(' ', '_')}_mean_median",
+            )
+            for _label, _df in component_mean_median.items()
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Summary: mean $-$ median for every metric
 
     One row per model and dataset; a $^\dagger$ marks where the model's rank differs
@@ -899,10 +1046,21 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_ORDER, cote_mean_median_df, metric_mean_median, mo, pd):
+def _(
+    MODEL_ORDER,
+    component_mean_median,
+    cote_mean_median_df,
+    metric_mean_median,
+    mo,
+    pd,
+):
     from latex_tables import latex_table as _latex_table
 
-    _all = {"COTe": cote_mean_median_df, **metric_mean_median}
+    # CER bounds are left out to keep the table printable
+    _components = {
+        _k: _v for _k, _v in component_mean_median.items() if not _k.startswith("CER")
+    }
+    _all = {"COTe": cote_mean_median_df, **_components, **metric_mean_median}
     _gap = {}
     for _label, _df in _all.items():
         _d = _df.set_index(["Dataset", "Model"])
