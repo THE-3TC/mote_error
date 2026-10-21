@@ -72,12 +72,12 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from pymote._core import (
+from mote_error._core import (
     _check_gt_map,
     _ms_mask,
     _owner_ssu_id,
 )
-from pymote.types import ClassMOTeCounts, ClassMOTeResult, Label, MaskInstance
+from mote_error.types import ClassMOTeCounts, ClassMOTeResult, Label, MaskInstance
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ def _validate_preds_have_labels(preds: Sequence[MaskInstance]) -> None:
     """Ensure every prediction carries a class label.
 
     Args:
-        preds: Sequence of :class:`~pymote.types.MaskInstance` predictions.
+        preds: Sequence of :class:`~mote_error.types.MaskInstance` predictions.
 
     Raises:
         ValueError: If any prediction has ``label=None``.
@@ -314,7 +314,7 @@ def mote_class(
 ) -> ClassMOTeResult:
     """Compute the full class-level MOTe decomposition for one image.
 
-    Returns a :class:`~pymote.types.ClassMOTeResult` containing all three
+    Returns a :class:`~mote_error.types.ClassMOTeResult` containing all three
     K×K interaction matrices, the K-vector share quantities, and the
     per-GT-class Missing vectors.
 
@@ -465,7 +465,7 @@ def class_confusion_counts(
 
 
 def sum_class_counts(a: ClassMOTeCounts, b: ClassMOTeCounts) -> ClassMOTeCounts:
-    """Accumulate two :class:`~pymote.types.ClassMOTeCounts` elementwise.
+    """Accumulate two :class:`~mote_error.types.ClassMOTeCounts` elementwise.
 
     Args:
         a: Running total (or the first image's counts).
@@ -502,7 +502,7 @@ def sum_class_counts(a: ClassMOTeCounts, b: ClassMOTeCounts) -> ClassMOTeCounts:
 
 
 def finalize_class_counts(counts: ClassMOTeCounts) -> ClassMOTeResult:
-    """Normalise accumulated :class:`~pymote.types.ClassMOTeCounts` into
+    """Normalise accumulated :class:`~mote_error.types.ClassMOTeCounts` into
     the final matrices, shares, and precision/recall/F1.
 
     This is the division step shared by :func:`mote_class` (single image) and

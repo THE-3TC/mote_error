@@ -1,4 +1,4 @@
-"""Shared type definitions used across the pymote package."""
+"""Shared type definitions used across the mote_error package."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ Label = Union[str, int]
 
 
 class MOTeResult(NamedTuple):
-    """Result of :func:`~pymote.layout.mote`.
+    """Result of :func:`~mote_error.layout.mote`.
 
     A ``NamedTuple``, so it unpacks positionally
     (``mote, M, O, T, E = mote(...)``) as well as by attribute.
@@ -130,7 +130,7 @@ class RegionPixels:
 class GTBoxes:
     """Ground-truth SSU boxes for the analytic bounding-box MOTe fast path.
 
-    Used as the ``gt`` argument to :func:`~pymote.layout.mote` when
+    Used as the ``gt`` argument to :func:`~mote_error.layout.mote` when
     ground truth is available as boxes rather than a rasterized pixel map.
     Bundles image extent alongside the boxes because ``excess``'s
     background-area denominator needs it, and pure box coordinates carry no
@@ -262,7 +262,7 @@ class ClassMOTeResult:
 @dataclass(frozen=True)
 class ClassMOTeCounts:
     """Raw, unnormalised per-class pixel sums for one image (or an accumulation
-    of several images via :func:`~pymote.class_metrics.sum_class_counts`).
+    of several images via :func:`~mote_error.class_metrics.sum_class_counts`).
 
     Unlike :class:`ClassMOTeResult`, these are summable across images. The
     share vectors are *not* row-sums of the K×K numerators. Coverage and
@@ -276,7 +276,7 @@ class ClassMOTeCounts:
     are tracked as independent accumulable quantities.
 
     Pass the accumulated totals to
-    :func:`~pymote.class_metrics.finalize_class_counts` to get the final
+    :func:`~mote_error.class_metrics.finalize_class_counts` to get the final
     matrices, shares, and precision/recall/F1.
 
     ``classes`` must be identical (same list, same order) across every

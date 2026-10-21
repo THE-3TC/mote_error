@@ -1,6 +1,6 @@
 """Shared pixel-arithmetic helpers for MOTe metric computation.
 
-These functions are internal to the pymote package and used by both
+These functions are internal to the mote_error package and used by both
 the scalar (metrics.py) and class-level (class_metrics.py) metric modules.
 """
 
@@ -10,13 +10,13 @@ from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from pymote.types import MaskInstance
+from mote_error.types import MaskInstance
 
 
 def _as_pred_masks(preds: Sequence[Union[np.ndarray, MaskInstance]]) -> List[np.ndarray]:
     """Convert a sequence of predictions to a list of validated 2D boolean masks.
 
-    Accepts either raw numpy arrays or :class:`~pymote.types.MaskInstance`
+    Accepts either raw numpy arrays or :class:`~mote_error.types.MaskInstance`
     objects. Each mask is validated to be a 2D array and cast to ``bool``.
 
     Args:

@@ -1051,9 +1051,9 @@ def extract_ssu_boxes(chars: pd.DataFrame) -> list:
     Each SSU's box is the axis-aligned extent of its characters, so the box is
     ink-derived rather than a typeset rectangle padded with whitespace. The
     result is ready to pass straight to
-    :func:`~pymote.adapters.boxes_to_gt_ssu_map`.
+    :func:`~mote_error.adapters.boxes_to_gt_ssu_map`.
 
-    ``ssu_id`` is 1-based in the character table because pymote reserves 0
+    ``ssu_id`` is 1-based in the character table because mote_error reserves 0
     for background; it is carried through unchanged.
 
     Args:
@@ -1096,10 +1096,10 @@ def extract_word_boxes(chars: pd.DataFrame) -> list:
 
 
 def chars_to_region_chars(chars: pd.DataFrame) -> "RegionChars":
-    """Convert the character table to :class:`~pymote.types.RegionChars`.
+    """Convert the character table to :class:`~mote_error.types.RegionChars`.
 
     This is the input the spatial OCR decompositions want — see
-    :func:`~pymote.ocr.cdd_decomp_spatial`. Character midpoints are derived
+    :func:`~mote_error.ocr.cdd_decomp_spatial`. Character midpoints are derived
     from the stored extents.
 
     Args:
@@ -1108,7 +1108,7 @@ def chars_to_region_chars(chars: pd.DataFrame) -> "RegionChars":
     Returns:
         A ``RegionChars`` whose ``region_ids`` are the table's ``ssu_id`` values.
     """
-    from pymote.types import RegionChars
+    from mote_error.types import RegionChars
 
     return RegionChars(
         tokens=chars["char"].to_numpy(dtype=object),
@@ -1164,7 +1164,7 @@ def load_limerick_example() -> Tuple[pd.DataFrame, np.ndarray, list]:
         Tuple of (character table, image as a numpy array, prediction boxes).
         The predictions are XYWH dicts standing in for a layout detector.
     """
-    pkg = files("pymote") / "assets" / "limerick_case_study"
+    pkg = files("mote_error") / "assets" / "limerick_case_study"
     with as_file(pkg / "characters.parquet") as parquet_path:
         chars = pd.read_parquet(parquet_path)
     image = np.array(Image.open(pkg / "limerick_image.png"))

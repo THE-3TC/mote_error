@@ -17,9 +17,9 @@ from typing import List, Dict, Any, Union, Tuple, Optional, Iterable, Sequence, 
 import numpy as np
 import collections
 
-from pymote.types import GTBoxes, MaskInstance, MOTeResult
-from pymote.adapters import calculate_intersection_area as _calculate_intersection_area
-from pymote._core import (
+from mote_error.types import GTBoxes, MaskInstance, MOTeResult
+from mote_error.adapters import calculate_intersection_area as _calculate_intersection_area
+from mote_error._core import (
     _as_pred_masks,
     _check_gt_map,
     _ms_mask,
@@ -27,7 +27,7 @@ from pymote._core import (
     _compose_pred_count,
     _owner_ssu_id,
 )
-from pymote._core_bbox import bbox_mote_components
+from mote_error._core_bbox import bbox_mote_components
 
 
 BBox = Dict[str, Any]
@@ -156,7 +156,7 @@ def f1(
     is at least ``threshold``. Matched predictions are true positives (TP),
     unmatched predictions false positives (FP), and unmatched GT boxes false
     negatives (FN). Classes are ignored; for class-aware or dataset-level F1
-    use :class:`pymote.map_metric.MAPMetric`, which applies the same rule.
+    use :class:`mote_error.map_metric.MAPMetric`, which applies the same rule.
 
     Args:
         predicted_regions: List of predicted bounding boxes, optionally with a
@@ -317,7 +317,7 @@ def mote(
 
     - Mask mode (default): `gt_ssu_map` is a 2D integer pixel array and
       `preds` is a sequence of prediction masks.
-    - Bbox mode: `gt_ssu_map` is a :class:`~pymote.types.GTBoxes` instance
+    - Bbox mode: `gt_ssu_map` is a :class:`~mote_error.types.GTBoxes` instance
       and `preds` is an ``(M, 4)`` array of predicted boxes in
       ``[x, y, width, height]`` format. This computes all components
       analytically via coordinate compression, without ever allocating a
@@ -326,8 +326,8 @@ def mote(
 
     Mixing representations (e.g. `GTBoxes` with a mask sequence, or a pixel
     array with a box array) is not supported and raises `TypeError` --
-    rasterize the box side first via :func:`~pymote.adapters.boxes_to_gt_ssu_map`/
-    :func:`~pymote.adapters.boxes_to_pred_masks` instead of mixing modes.
+    rasterize the box side first via :func:`~mote_error.adapters.boxes_to_gt_ssu_map`/
+    :func:`~mote_error.adapters.boxes_to_pred_masks` instead of mixing modes.
     Note: passing a bare ``(K, 4)`` integer array as `gt_ssu_map` (forgetting
     to wrap it in `GTBoxes`) is not detected and will be silently
     misinterpreted as a tiny pixel mask, since both are valid 2D integer
@@ -336,9 +336,9 @@ def mote(
     Args:
         gt_ssu_map: Either a 2D integer array where each pixel holds the SSU
             id of its ground-truth region (0 = background), or a
-            :class:`~pymote.types.GTBoxes` instance for the bbox fast path.
+            :class:`~mote_error.types.GTBoxes` instance for the bbox fast path.
         preds: For mask mode: sequence of predictions, each either a 2D
-            boolean numpy array or a :class:`~pymote.types.MaskInstance`.
+            boolean numpy array or a :class:`~mote_error.types.MaskInstance`.
             For bbox mode: an ``(M, 4)`` numpy array of predicted boxes in
             ``[x, y, width, height]`` format, same coordinate frame as
             `gt_ssu_map.boxes`.
@@ -347,7 +347,7 @@ def mote(
         weight_trespass: Weight applied to Trespass (default 1.0).
 
     Returns:
-        A :class:`~pymote.types.MOTeResult` named tuple
+        A :class:`~mote_error.types.MOTeResult` named tuple
         ``(mote, missing, overlap, trespass, excess)``.
 
     Raises:

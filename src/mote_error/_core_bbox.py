@@ -20,7 +20,7 @@ O(N log N) sweep-line / segment-tree Klee's-measure-problem algorithm --
 that was considered and explicitly declined given this project's realistic
 per-page box counts of tens to ~150 combined boxes).
 
-Do not import this module from outside the pymote package.
+Do not import this module from outside the mote_error package.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import NamedTuple, Optional, Tuple
 
 import numpy as np
 
-from pymote.types import GTBoxes
+from mote_error.types import GTBoxes
 
 
 class _Grid(NamedTuple):

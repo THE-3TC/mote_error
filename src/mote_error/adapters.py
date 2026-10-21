@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 from PIL import Image, ImageDraw
 
-from pymote.types import Label, MaskInstance, RegionPixels
+from mote_error.types import Label, MaskInstance, RegionPixels
 
 
 BBox = Dict[str, Any]
@@ -183,7 +183,7 @@ def boxes_to_pred_masks(
         canvas_h: Canvas height in pixels.
 
     Returns:
-        List of :class:`~pymote.types.MaskInstance` objects, one per input
+        List of :class:`~mote_error.types.MaskInstance` objects, one per input
         box, with ``mask`` set to the 2D boolean array and ``label`` extracted
         from the box dict.
     """
@@ -311,7 +311,7 @@ def hf_instance_seg_to_masks(
     score_threshold: float = 0.5,
 ) -> List[MaskInstance]:
     """Convert a HuggingFace ``post_process_instance_segmentation`` result to
-    a list of :class:`~pymote.types.MaskInstance` objects.
+    a list of :class:`~mote_error.types.MaskInstance` objects.
 
     Works with any HuggingFace model that uses the standard instance
     segmentation post-processing pipeline (Mask2Former, MaskFormer, etc.).
@@ -330,7 +330,7 @@ def hf_instance_seg_to_masks(
             are discarded (default ``0.5``).
 
     Returns:
-        List of :class:`~pymote.types.MaskInstance` objects, one per
+        List of :class:`~mote_error.types.MaskInstance` objects, one per
         prediction that passes the score threshold.  Masks are 2D boolean
         numpy arrays at the resolution set by ``target_sizes`` during
         post-processing.
@@ -379,7 +379,7 @@ def hf_panoptic_seg_to_masks(
     things_only: bool = True,
 ) -> List[MaskInstance]:
     """Convert a HuggingFace ``post_process_panoptic_segmentation`` result to
-    a list of :class:`~pymote.types.MaskInstance` objects.
+    a list of :class:`~mote_error.types.MaskInstance` objects.
 
     Works with any HuggingFace model that uses the standard panoptic
     segmentation post-processing pipeline (Mask2Former, MaskFormer, etc.).
@@ -398,7 +398,7 @@ def hf_panoptic_seg_to_masks(
             ("things") segments.
 
     Returns:
-        List of :class:`~pymote.types.MaskInstance` objects, one per
+        List of :class:`~mote_error.types.MaskInstance` objects, one per
         retained segment.  Masks are 2D boolean numpy arrays at the resolution
         set by ``target_sizes`` during post-processing.
     """

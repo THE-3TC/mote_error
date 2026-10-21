@@ -20,15 +20,15 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pymote._core import (
+from mote_error._core import (
     _as_pred_masks,
     _check_gt_map,
     _compose_pred_count,
     _ms_mask,
     _owner_ssu_id,
 )
-from pymote.class_metrics import _group_preds_by_class, _validate_preds_have_labels
-from pymote.types import Label, MaskInstance
+from mote_error.class_metrics import _group_preds_by_class, _validate_preds_have_labels
+from mote_error.types import Label, MaskInstance
 
 RGBA = Tuple[float, float, float, float]
 
@@ -120,7 +120,7 @@ def compute_mote_masks(
         gt_ssu_map: 2D integer array where each pixel value is the SSU id of
             the ground-truth region at that location. Background pixels are 0.
         preds: Sequence of 2D boolean prediction masks (one per predicted box),
-            or :class:`~pymote.types.MaskInstance` objects. Same interface
+            or :class:`~mote_error.types.MaskInstance` objects. Same interface
             as the scalar metric functions (e.g. ``missing``, ``trespass``).
 
     Returns:
