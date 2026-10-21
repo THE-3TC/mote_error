@@ -1,15 +1,15 @@
-"""Tests for the analytic bounding-box fast path (GTBoxes / bbox-mode cote_score)."""
+"""Tests for the analytic bounding-box fast path (GTBoxes / bbox-mode mote)."""
 
 import numpy as np
 import pytest
 
-from cotescore import GTBoxes, cote_score
+from cotescore import GTBoxes, mote
 from cotescore.types import MaskInstance
 from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 from cotescore._core_bbox import (
     _build_compressed_grid,
     _box_to_cells,
-    bbox_cote_components,
+    bbox_mote_components,
 )
 
 
@@ -167,21 +167,21 @@ class TestCompressedGrid:
         assert list(grid.edges_x) == [0.0, 10.0, 20.0]
 
 
-class TestBboxCoteScoreBasic:
+class TestBboxMoteBasic:
     """Hand-verified exact scenarios, reusing test_metrics.py's worked examples."""
 
     def test_perfect_match(self):
-        # mirrors test_cot_perfect_score
+        # mirrors test_mote_perfect_score
         gt = _gt_boxes([[0, 0, 10, 10], [20, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 10, 10], [20, 0, 10, 10]])
-        result = cote_score(gt, preds)
-        assert abs(result[0] - 1.0) < TOLERANCE
+        result = mote(gt, preds)
+        assert abs(result.mote - 0.0) < TOLERANCE
 
     def test_partial_coverage(self):
-        # mirrors test_cot_partial_coverage
+        # mirrors test_mote_partial_coverage
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 5, 10]])
-        result = cote_score(gt, preds)
+        result = mote(gt, preds)
         assert abs(result[0] - 0.5) < TOLERANCE
         assert abs(result[1] - 0.5) < TOLERANCE
 
@@ -189,49 +189,49 @@ class TestBboxCoteScoreBasic:
         # mirrors test_trespass_overlap: expected T = 20/200 = 0.1
         gt = _gt_boxes([[0, 0, 10, 10], [10, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 12, 10]])
-        _, _, _, T, _ = cote_score(gt, preds)
+        _, _, _, T, _ = mote(gt, preds)
         assert abs(T - 0.1) < TOLERANCE
 
     def test_trespass_multiple_preds(self):
         # mirrors test_trespass_multiple_preds: expected T = 50/200 = 0.25
         gt = _gt_boxes([[0, 0, 10, 10], [20, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 10, 10], [5, 0, 25, 10]])
-        _, _, _, T, _ = cote_score(gt, preds)
+        _, _, _, T, _ = mote(gt, preds)
         assert abs(T - 0.25) < TOLERANCE
 
     def test_trespass_different_gt_sizes(self):
         # mirrors test_trespass_different_gt_sizes: expected T = 0.0
         gt = _gt_boxes([[0, 0, 10, 10], [20, 0, 20, 10]])
         preds = _pred_boxes([[0, 0, 15, 10]])
-        _, _, _, T, _ = cote_score(gt, preds)
+        _, _, _, T, _ = mote(gt, preds)
         assert abs(T - 0.0) < TOLERANCE
 
     def test_excess_background(self):
         # mirrors test_excess_background: expected E = 50/9900
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 15, 10]])
-        _, _, _, _, E = cote_score(gt, preds)
+        _, _, _, _, E = mote(gt, preds)
         assert abs(E - 50.0 / 9900.0) < TOLERANCE
 
     def test_excess_between_gts(self):
         # mirrors test_excess_between_gts: expected E = 100/9800
         gt = _gt_boxes([[0, 0, 10, 10], [20, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 30, 10]])
-        _, _, _, _, E = cote_score(gt, preds)
+        _, _, _, _, E = mote(gt, preds)
         assert abs(E - 100.0 / 9800.0) < TOLERANCE
 
     def test_excess_overlapping_predictions(self):
         # mirrors test_excess_overlapping_predictions: expected E = 150/9900
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[20, 0, 10, 10], [25, 0, 10, 10]])
-        _, _, _, _, E = cote_score(gt, preds)
+        _, _, _, _, E = mote(gt, preds)
         assert abs(E - 150.0 / 9900.0) < TOLERANCE
 
     def test_excess_bounded_at_one(self):
         # mirrors test_excess_bounded_at_one: expected E = 1.0
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 100, 100]])
-        _, _, _, _, E = cote_score(gt, preds)
+        _, _, _, _, E = mote(gt, preds)
         assert abs(E - 1.0) < TOLERANCE
 
     def test_overlap_three_stacked_predictions(self):
@@ -242,7 +242,7 @@ class TestBboxCoteScoreBasic:
         Picking numbers where these clearly diverge."""
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[0, 0, 10, 10], [0, 0, 10, 10], [0, 0, 10, 10]])
-        _, _, O, _, _ = cote_score(gt, preds)
+        _, _, O, _, _ = mote(gt, preds)
         assert abs(O - 2.0) < TOLERANCE
 
     def test_gt_ownership_tie_break_is_array_order(self):
@@ -292,23 +292,36 @@ class TestBboxCoteScoreBasic:
         pred_masks = _dict_boxes_to_pred_masks(
             [{"x": 0, "y": 0, "width": 20, "height": 10}], 100, 100
         )
-        _, _, _, T_mask, _ = cote_score(gt_map, pred_masks)
-        _, _, _, T_bbox, _ = cote_score(gt, preds)
+        _, _, _, T_mask, _ = mote(gt_map, pred_masks)
+        _, _, _, T_bbox, _ = mote(gt, preds)
         assert abs(T_bbox - T_mask) < TOLERANCE
 
     def test_zero_gt_boxes(self):
         gt = _gt_boxes([])
         preds = _pred_boxes([[0, 0, 10, 10]])
-        C, O, T, E = bbox_cote_components(gt, preds)
-        assert C == 0.0
+        M, O, T, E = bbox_mote_components(gt, preds)
+        assert M == 0.0
         assert O == 0.0
         assert T == 0.0
+
+    def test_zero_gt_boxes_agrees_with_mask_mode(self):
+        gt = _gt_boxes([])
+        preds = _pred_boxes([[0, 0, 10, 10], [0, 0, 50, 20]])
+        gt_map = np.zeros((100, 100), dtype=np.int32)
+        pred_masks = _dict_boxes_to_pred_masks(
+            [{"x": 0, "y": 0, "width": 10, "height": 10}, {"x": 0, "y": 0, "width": 50, "height": 20}],
+            100,
+            100,
+        )
+        bbox_result = mote(gt, preds)
+        assert bbox_result[:4] == (0.0, 0.0, 0.0, 0.0)
+        assert tuple(bbox_result) == tuple(mote(gt_map, pred_masks))
 
     def test_zero_predicted_boxes(self):
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([])
-        C, O, T, E = bbox_cote_components(gt, preds)
-        assert C == 0.0
+        M, O, T, E = bbox_mote_components(gt, preds)
+        assert M == 1.0
         assert O == 0.0
         assert T == 0.0
         assert E == 0.0
@@ -316,8 +329,8 @@ class TestBboxCoteScoreBasic:
     def test_zero_area_predicted_box_contributes_nothing(self):
         gt = _gt_boxes([[0, 0, 10, 10]])
         preds = _pred_boxes([[5, 5, 0, 5]])  # zero width
-        C, O, T, E = bbox_cote_components(gt, preds)
-        assert C == 0.0
+        M, O, T, E = bbox_mote_components(gt, preds)
+        assert M == 1.0
         assert O == 0.0
         assert T == 0.0
         assert E == 0.0
@@ -349,8 +362,8 @@ class TestBboxCoteScoreBasic:
             image_height,
         )
 
-        bbox_result = cote_score(gt, preds)
-        mask_result = cote_score(gt_map, pred_masks)
+        bbox_result = mote(gt, preds)
+        mask_result = mote(gt_map, pred_masks)
         # Non-integer box coordinates -> mask mode still rounds to pixel
         # boundaries even at native resolution, so use the cross-representation
         # tolerance, not exact.
@@ -376,12 +389,12 @@ class TestBboxCoteScoreBasic:
             [{"x": 0, "y": 0, "width": 100, "height": 100}], image_width, image_height
         )
 
-        bbox_result = cote_score(gt, preds)
-        mask_result = cote_score(gt_map, pred_masks)
+        bbox_result = mote(gt, preds)
+        mask_result = mote(gt_map, pred_masks)
         for a, b in zip(bbox_result, mask_result):
             assert abs(a - b) < TOLERANCE, f"{bbox_result} vs {mask_result}"
-        # GT clamps to the full 100x100 image -> coverage 1.0, excess 0.0
-        assert abs(bbox_result[1] - 1.0) < TOLERANCE
+        # GT clamps to the full 100x100 image -> missing 0.0, excess 0.0
+        assert abs(bbox_result.missing - 0.0) < TOLERANCE
         assert abs(bbox_result[4] - 0.0) < TOLERANCE
 
     def test_adjoining_grid_no_double_counting(self):
@@ -396,8 +409,8 @@ class TestBboxCoteScoreBasic:
         gt = _gt_boxes(gt_list, image_width=100, image_height=100)
         # One big prediction covering the whole 3x3 block exactly.
         preds = _pred_boxes([[0, 0, 30, 30]])
-        C, O, T, E = bbox_cote_components(gt, preds)
-        assert abs(C - 1.0) < TOLERANCE
+        M, O, T, E = bbox_mote_components(gt, preds)
+        assert abs(M - 0.0) < TOLERANCE
         assert abs(O - 0.0) < TOLERANCE
 
 
@@ -419,7 +432,7 @@ class TestBboxModeAgreesWithMaskMode:
     def _compare(self, gt_list, pred_list, image_dim, tolerance):
         gt = _gt_boxes(gt_list, image_width=image_dim, image_height=image_dim)
         preds = _pred_boxes(pred_list)
-        bbox_result = cote_score(gt, preds)
+        bbox_result = mote(gt, preds)
 
         gt_map = _dict_boxes_to_gt_ssu_map(
             [{"x": b[0], "y": b[1], "width": b[2], "height": b[3]} for b in gt_list],
@@ -431,7 +444,7 @@ class TestBboxModeAgreesWithMaskMode:
             image_dim,
             image_dim,
         )
-        mask_result = cote_score(gt_map, pred_masks)
+        mask_result = mote(gt_map, pred_masks)
 
         for a, b in zip(bbox_result, mask_result):
             assert abs(a - b) < tolerance, f"{bbox_result} vs {mask_result}"
@@ -466,13 +479,13 @@ class TestMixedModeRaises:
         gt = _gt_boxes([[0, 0, 10, 10]])
         pred_masks = [np.zeros((100, 100), dtype=bool)]
         with pytest.raises(TypeError):
-            cote_score(gt, pred_masks)
+            mote(gt, pred_masks)
 
     def test_boxes_gt_with_mask_instance_raises(self):
         gt = _gt_boxes([[0, 0, 10, 10]])
         pred_masks = [MaskInstance(mask=np.zeros((100, 100), dtype=bool))]
         with pytest.raises(TypeError):
-            cote_score(gt, pred_masks)
+            mote(gt, pred_masks)
 
     def test_mask_gt_with_box_array_raises(self):
         gt_map = _dict_boxes_to_gt_ssu_map(
@@ -480,4 +493,4 @@ class TestMixedModeRaises:
         )
         preds = _pred_boxes([[0, 0, 10, 10]])
         with pytest.raises(TypeError):
-            cote_score(gt_map, preds)
+            mote(gt_map, preds)
