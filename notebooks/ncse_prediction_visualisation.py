@@ -14,9 +14,9 @@ def _():
     from PIL import Image
     import marimo as mo
 
-    from cotescore.visualisation import compute_cote_masks, visualize_cote_states
-    from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-    from cotescore.metrics import cote_score, coverage, overlap, trespass, excess, mean_iou, f1
+    from pymote.visualisation import compute_mote_masks, visualize_mote_states
+    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from pymote.layout import mote, missing, overlap, trespass, excess, mean_iou, f1
 
     _results_dir = Path("data/results")
     image_dir = Path.home() / "fakenewslib/data/ncsev2/images"
@@ -29,9 +29,9 @@ def _():
         Path,
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
-        compute_cote_masks,
-        cote_score,
-        coverage,
+        compute_mote_masks,
+        mote,
+        missing,
         excess,
         f1,
         heron_df,
@@ -44,7 +44,7 @@ def _():
         plt,
         ppdoc_l,
         trespass,
-        visualize_cote_states,
+        visualize_mote_states,
         yolo_df,
     )
 
@@ -69,17 +69,17 @@ def _(
     Image,
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
-    compute_cote_masks,
-    coverage,
+    compute_mote_masks,
+    missing,
     excess,
     image_dir,
     np,
     overlap,
     plt,
     trespass,
-    visualize_cote_states,
+    visualize_mote_states,
 ):
-    def make_cote_figure(df, filename, figsize=(12, 8), title=None):
+    def make_mote_figure(df, filename, figsize=(12, 8), title=None):
         img_df = df[df.filename == filename]
         gt_boxes = img_df[img_df.source == "gt"].to_dict("records")
         pred_boxes = img_df[img_df.source == "pred"].to_dict("records")
@@ -92,15 +92,15 @@ def _(
         gt_ssu_map = boxes_to_gt_ssu_map(gt_boxes, csv_w, csv_h, actual_w, actual_h)
         pred_masks = boxes_to_pred_masks(pred_boxes, csv_w, csv_h, actual_w, actual_h)
 
-        masks = compute_cote_masks(gt_ssu_map, pred_masks)
+        masks = compute_mote_masks(gt_ssu_map, pred_masks)
 
-        cov = coverage(gt_ssu_map, pred_masks)
+        miss = missing(gt_ssu_map, pred_masks)
         ovl = overlap(gt_ssu_map, pred_masks)
         tres = trespass(gt_ssu_map, pred_masks)
         exc = excess(gt_ssu_map, pred_masks)
 
         fig, ax = plt.subplots(figsize=figsize, dpi=72)
-        patches = visualize_cote_states(image_array, masks, ax)
+        patches = visualize_mote_states(image_array, masks, ax)
         fig.legend(
             handles=patches,
             loc="lower center",
@@ -110,7 +110,7 @@ def _(
         )
 
         metrics_text = (
-            f"Coverage: {cov:.3f}   Overlap: {ovl:.3f}   "
+            f"Missing: {miss:.3f}   Overlap: {ovl:.3f}   "
             f"Trespass: {tres:.3f}   Excess: {exc:.3f}   "
             f"GT boxes: {len(gt_boxes)}   Pred boxes: {len(pred_boxes)}"
         )
@@ -128,12 +128,12 @@ def _(
     Image,
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
-    compute_cote_masks,
-    cote_score,
+    compute_mote_masks,
+    mote,
     image_dir,
     np,
     plt,
-    visualize_cote_states,
+    visualize_mote_states,
 ):
     def make_multi_model_figure(
         dfs, filename, panel_width=10, metrics_col_width=1.8, dpi=72, show_metrics=True
@@ -195,11 +195,11 @@ def _(
             gt_ssu_map = boxes_to_gt_ssu_map(gt_boxes, csv_w, csv_h, actual_w, actual_h)
             pred_masks = boxes_to_pred_masks(pred_boxes, csv_w, csv_h, actual_w, actual_h)
 
-            masks = compute_cote_masks(gt_ssu_map, pred_masks)
+            masks = compute_mote_masks(gt_ssu_map, pred_masks)
 
-            cot, cov, ovl, tres, exc = cote_score(gt_ssu_map, pred_masks)
+            err, miss, ovl, tres, exc = mote(gt_ssu_map, pred_masks)
 
-            patches = visualize_cote_states(image_array, masks, img_ax)
+            patches = visualize_mote_states(image_array, masks, img_ax)
             if len(patches) > len(best_patches):
                 best_patches = patches
 
@@ -208,9 +208,9 @@ def _(
             if show_metrics:
                 txt_ax.axis("off")
                 metrics_text = (
-                    f"CoTE: {cot:.3f}\n\n"
+                    f"MOTe: {err:.3f}\n\n"
                     f"──────\n\n"
-                    f"Cov:  {cov:.3f}\n\n"
+                    f"Miss: {miss:.3f}\n\n"
                     f"Ovl:  {ovl:.3f}\n\n"
                     f"Tres: {tres:.3f}\n\n"
                     f"Exc:  {exc:.3f}\n\n"
@@ -268,7 +268,7 @@ def _(
     Image,
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
-    cote_score,
+    mote,
     f1,
     heron_df,
     image_dir,
@@ -297,15 +297,15 @@ def _(
         _gt_ssu_map = boxes_to_gt_ssu_map(_gt_boxes, _csv_w, _csv_h, _actual_w, _actual_h)
         _pred_masks = boxes_to_pred_masks(_pred_boxes, _csv_w, _csv_h, _actual_w, _actual_h)
 
-        _cot, _cov, _ovl, _tres, _exc = cote_score(_gt_ssu_map, _pred_masks)
+        _err, _miss, _ovl, _tres, _exc = mote(_gt_ssu_map, _pred_masks)
         _miou = mean_iou(_pred_boxes, _gt_boxes)
         _f1 = f1(_pred_boxes, _gt_boxes)
 
         _rows.append(
             {
                 "Model": _model_name,
-                "CoTE": _cot,
-                "Coverage": _cov,
+                "MOTe": _err,
+                "Missing": _miss,
                 "Overlap": _ovl,
                 "Trespass": _tres,
                 "Excess": _exc,
@@ -319,7 +319,7 @@ def _(
     import latex_tables as _lt
 
     _lt.latex_table(
-        _lt.bold_best_cols(_metrics_df, lower_cols=["Overlap", "Trespass", "Excess"], fmt="{:.2f}"),
+        _lt.bold_best_cols(_metrics_df, lower_cols=["MOTe", "Missing", "Overlap", "Trespass", "Excess"], fmt="{:.2f}"),
         caption=f"Per-model metrics for \\texttt{{{_filename[:-4]}}}, bold is best in column",
         label="tab:model-metrics",
     )

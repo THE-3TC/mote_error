@@ -17,8 +17,8 @@ def _(mo):
         r"""
     # The CEV on NCSE: is OCR or parsing the bottleneck?
 
-    This is the second of two notebooks. It assumes you have run **`Tutorial_1_the_COTe.py`**,
-    which wrote layout predictions and per-page COTe scores to `outputs/predictions/`.
+    This is the second of two notebooks. It assumes you have run **`Tutorial_1_the_MOTe.py`**,
+    which wrote layout predictions and per-page MOTe errors to `outputs/predictions/`.
 
     ## The problem
 
@@ -83,8 +83,8 @@ def _(mo):
 @app.cell
 def _(os):
     # --- Point these at your data (same as notebook 1) ----------------------------
-    NCSE_IMAGES_DIR = "cotescore/data/ncsev2/images"
-    NCSE_GT_CSV = "cotescore/data/ncsev2/ncse_testset_bboxes.csv"
+    NCSE_IMAGES_DIR = "pymote/data/ncsev2/images"
+    NCSE_GT_CSV = "pymote/data/ncsev2/ncse_testset_bboxes.csv"
 
     # --- Written by notebook 1 ----------------------------------------------------
     PRED_DIR = "outputs/predictions"
@@ -113,11 +113,11 @@ def _(os):
     TESSERACT_OMP_THREADS = 1
 
     # Triage thresholds (section 5)
-    COTE_THRESHOLD = 0.5
+    MOTE_THRESHOLD = 0.5
     RATIO_THRESHOLD = 0.5
     return (
         CEV_DIR,
-        COTE_THRESHOLD,
+        MOTE_THRESHOLD,
         EASYOCR_BATCH_SIZE,
         LAYOUT_MODELS,
         TESSERACT_OMP_THREADS,
@@ -143,7 +143,7 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from cotescore.ocr import cdd_decomp, spacer_decomp
+    from pymote.ocr import cdd_decomp, spacer_decomp
 
     return (
         Image,
@@ -223,16 +223,16 @@ def _(Image, NCSE_GT_CSV, NCSE_IMAGES_DIR, Path, pd):
 @app.cell
 def _(LAYOUT_MODELS, PRED_DIR, pd):
     pred_df = {}
-    cote_df = {}
+    mote_df = {}
     for _m in LAYOUT_MODELS:
         _p = pd.read_csv(f"{PRED_DIR}/ncse_{_m}_predictions.csv")
         pred_df[_m] = _p[_p["source"] == "pred"].reset_index(drop=True)
-        cote_df[_m] = pd.read_csv(f"{PRED_DIR}/ncse_{_m}_scores.csv")
+        mote_df[_m] = pd.read_csv(f"{PRED_DIR}/ncse_{_m}_scores.csv")
         print(
             f"{_m}: {len(pred_df[_m])} predicted regions across "
             f"{pred_df[_m].filename.nunique()} pages"
         )
-    return cote_df, pred_df
+    return mote_df, pred_df
 
 
 @app.cell(hide_code=True)
@@ -674,20 +674,20 @@ def _(mo):
     ## 5. Which stage is the bottleneck?
 
     We can infer the main source of error without character-level ground truth, 
-    By combining the COTe and SpACER.
+    By combining the MOTe and SpACER.
 
-    - **COTe**: How good the page parsing  (notebook 1).
+    - **MOTe**: How much error the page parsing introduced (notebook 1).
     - **$d_{ocr} / d_{total}$**: What share of the pipeline's total error was already present
       when OCR ran on *perfect* regions.
 
 
     ```python
-    ocr_is_bottleneck = (cote > 0.5) & (d_ocr / d_total > 0.5)
+    ocr_is_bottleneck = (mote < 0.5) & (d_ocr / d_total > 0.5)
     ```
 
     Understanding the two terms:
 
-    - **High COTe**: Regions are broadly correctly parsed, meaning the amount of error directly
+    - **Low MOTe**: Regions are broadly correctly parsed, meaning the amount of error directly
     introduced by missing or overlapping regions is relatively low.
     - **High ratio** : There is high OCR on perfectly parsed data error relative 
     to the total pipleline, indicating OCR is the main source of error.
@@ -704,24 +704,24 @@ def _(mo):
 
 
 @app.cell
-def _(COTE_THRESHOLD, LAYOUT_MODELS, RATIO_THRESHOLD, cev_df, cote_df, pd):
-    _cote = pd.concat(
-        [cote_df[_m][["filename", "cote"]].assign(layout_model=_m) for _m in LAYOUT_MODELS],
+def _(MOTE_THRESHOLD, LAYOUT_MODELS, RATIO_THRESHOLD, cev_df, mote_df, pd):
+    _mote = pd.concat(
+        [mote_df[_m][["filename", "mote"]].assign(layout_model=_m) for _m in LAYOUT_MODELS],
         ignore_index=True,
     )
-    triage_df = cev_df.merge(_cote, on=["filename", "layout_model"], how="left")
+    triage_df = cev_df.merge(_mote, on=["filename", "layout_model"], how="left")
 
     triage_df["ocr_over_total"] = (
         triage_df["spacer_d_ocr"] / triage_df["spacer_d_total"]
     ).replace([float("inf"), -float("inf")], float("nan"))
 
-    triage_df["ocr_is_bottleneck"] = (triage_df["cote"] > COTE_THRESHOLD) & (
+    triage_df["ocr_is_bottleneck"] = (triage_df["mote"] < MOTE_THRESHOLD) & (
         triage_df["ocr_over_total"] > RATIO_THRESHOLD
     )
     triage_df["verdict"] = triage_df["ocr_is_bottleneck"].map(
         {True: "OCR", False: "parsing"}
     )
-    print(f"Rule: cote > {COTE_THRESHOLD} AND d_ocr/d_total > {RATIO_THRESHOLD}\n")
+    print(f"Rule: mote < {MOTE_THRESHOLD} AND d_ocr/d_total > {RATIO_THRESHOLD}\n")
     print(
         triage_df.groupby(["layout_model", "ocr_model"])["verdict"]
         .value_counts()
@@ -732,7 +732,7 @@ def _(COTE_THRESHOLD, LAYOUT_MODELS, RATIO_THRESHOLD, cev_df, cote_df, pd):
 
 
 @app.cell
-def _(COTE_THRESHOLD, RATIO_THRESHOLD, plt, triage_df):
+def _(MOTE_THRESHOLD, RATIO_THRESHOLD, plt, triage_df):
     _combos = sorted(triage_df.groupby(["layout_model", "ocr_model"]).groups)
     _fig, _axes = plt.subplots(
         1, len(_combos), figsize=(4.2 * len(_combos), 4.4), sharex=True, sharey=True
@@ -746,17 +746,17 @@ def _(COTE_THRESHOLD, RATIO_THRESHOLD, plt, triage_df):
         for _verdict, _colour in [("OCR", "tab:red"), ("parsing", "tab:blue")]:
             _s = _sub[_sub.verdict == _verdict]
             _ax.scatter(
-                _s["cote"], _s["ocr_over_total"], s=42, alpha=0.8,
+                _s["mote"], _s["ocr_over_total"], s=42, alpha=0.8,
                 c=_colour, label=f"{_verdict} ({len(_s)})",
             )
-        _ax.axvline(COTE_THRESHOLD, color="k", ls="--", lw=1)
+        _ax.axvline(MOTE_THRESHOLD, color="k", ls="--", lw=1)
         _ax.axhline(RATIO_THRESHOLD, color="k", ls="--", lw=1)
         _ax.set_title(f"{_lm} + {_om}")
-        _ax.set_xlabel("COTe")
+        _ax.set_xlabel("MOTe error")
         _ax.legend(fontsize=8, loc="lower left")
     _axes[0].set_ylabel("SpACER  $d_{ocr}$ / $d_{total}$")
     _fig.suptitle(
-        "Bottleneck triage: top-right quadrant = OCR-limited, elsewhere = parsing-limited"
+        "Bottleneck triage: top-left quadrant = OCR-limited, elsewhere = parsing-limited"
     )
     _fig.tight_layout()
     _fig
@@ -779,12 +779,12 @@ def _(mo):
     Across the two notebooks we evaluated a two-stage document pipeline, keeping the stages
     separable throughout:
 
-    - **COTe** scored the layout stage on pixels rather than box matching, so it stayed
+    - **MOTe** scored the layout stage on pixels rather than box matching, so it stayed
       meaningful even though the models and the ground truth disagree about how a page divides
       into regions.
     - **The CEV** scored the OCR stage on character bags rather than aligned strings, so it stayed
       meaningful even when parsing errors destroyed the reading order.
-    - Combining $COTe$ with $d_{ocr}/d_{total}$ attributed each page's error to a stage — using
+    - Combining $MOTe$ with $d_{ocr}/d_{total}$ attributed each page's error to a stage — using
       only quantities that a dataset without character positions can supply.
 
     **To go further.** If your ground truth includes character boxes, use `spacer_decomp_spatial`
@@ -797,7 +797,7 @@ def _(mo):
 
     - `ocr_*.csv` — cached transcriptions, one file per OCR pass.
     - `ncse_cev_scores.csv` — per page × layout model × OCR engine CEV components.
-    - `ncse_triage.csv` — the above plus COTe, the ratio, and the verdict.
+    - `ncse_triage.csv` — the above plus MOTe, the ratio, and the verdict.
     """
     )
     return

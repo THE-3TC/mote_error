@@ -7,7 +7,7 @@ from collections import Counter
 import numpy as np
 import pytest
 
-from cotescore import (
+from pymote import (
     CDDDecomposition,
     SpACERDecomposition,
     RegionChars,
@@ -22,8 +22,8 @@ from cotescore import (
     spacer_decomp_spatial,
     text_to_counter,
 )
-from cotescore._distributions import build_R_from_region_pixels, build_R_from_bboxes, build_R_spatial
-from cotescore.ocr import _spacer_counts
+from pymote._distributions import build_R_from_region_pixels, build_R_from_bboxes, build_R_spatial
+from pymote.ocr import _spacer_counts
 
 
 # =============================================================================

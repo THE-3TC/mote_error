@@ -1,7 +1,7 @@
-"""Analytic, box-coordinate-only COTe metric computation via coordinate compression.
+"""Analytic, box-coordinate-only MOTe metric computation via coordinate compression.
 
 Companion to ``_core.py``: where ``_core.py`` contains pixel-array (mask-based)
-arithmetic helpers, this module computes Coverage/Overlap/Trespass/Excess
+arithmetic helpers, this module computes Missing/Overlap/Trespass/Excess
 directly from box coordinates, never allocating a full-canvas raster.
 
 The core idea is that a coordinate-compressed grid is itself just a raster
@@ -20,7 +20,7 @@ O(N log N) sweep-line / segment-tree Klee's-measure-problem algorithm --
 that was considered and explicitly declined given this project's realistic
 per-page box counts of tens to ~150 combined boxes).
 
-Do not import this module from outside the cotescore package.
+Do not import this module from outside the pymote package.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import NamedTuple, Optional, Tuple
 
 import numpy as np
 
-from cotescore.types import GTBoxes
+from pymote.types import GTBoxes
 
 
 class _Grid(NamedTuple):
@@ -238,16 +238,16 @@ def _dominant_owner_by_area(
     return int(np.flatnonzero(totals == max_val)[0])
 
 
-def bbox_cote_components(
+def bbox_mote_components(
     gt: GTBoxes, pred_boxes: np.ndarray
 ) -> Tuple[float, float, float, float]:
-    """Compute (Coverage, Overlap, Trespass, Excess) directly from boxes.
+    """Compute (Missing, Overlap, Trespass, Excess) directly from boxes.
 
-    Builds the coordinate-compressed grid once and derives all four COTe
+    Builds the coordinate-compressed grid once and derives all four MOTe
     components from it, avoiding any pixel-raster allocation. This is the
-    single entry point `layout.cote_score`'s bbox-mode branch calls into.
+    single entry point `layout.mote`'s bbox-mode branch calls into.
     Guard order for each component independently mirrors its mask-mode
-    counterpart in `layout.py` (`coverage`/`overlap`/`trespass`/`excess`),
+    counterpart in `layout.py` (`missing`/`overlap`/`trespass`/`excess`),
     to minimize risk of the two implementations drifting apart.
 
     Args:
@@ -256,7 +256,7 @@ def bbox_cote_components(
             format, same coordinate frame as `gt.boxes`.
 
     Returns:
-        Tuple (coverage, overlap, trespass, excess). `overlap` (like mask
+        Tuple (missing, overlap, trespass, excess). `overlap` (like mask
         mode's `overlap()`) is an unclamped O_raw; only `excess` is clamped
         to [0.0, 1.0], matching mask mode's own clamping behaviour.
     """
@@ -273,14 +273,14 @@ def bbox_cote_components(
     gt_area = float(area[gt_mask].sum()) if area.size else 0.0
     count = _paint_pred_count(grid, pred_boxes) if m > 0 else None
 
-    # --- Coverage (mirrors coverage()'s guard order) ---
+    # --- Missing (mirrors missing()/coverage()'s guard order) ---
     if gt_area == 0.0:
-        coverage = 1.0 if m == 0 else 0.0
+        missing = 0.0
     elif m == 0:
-        coverage = 0.0
+        missing = 1.0
     else:
         covered_area = float(area[gt_mask & (count > 0)].sum())
-        coverage = covered_area / gt_area
+        missing = 1.0 - covered_area / gt_area
 
     # --- Overlap (mirrors overlap()'s guard order) ---
     if gt_area == 0.0 or m == 0:
@@ -319,4 +319,4 @@ def bbox_cote_components(
             excess_area = float(area[(~gt_mask) & (count > 0)].sum()) if area.size else 0.0
             excess = min(1.0, max(0.0, excess_area / background_area))
 
-    return (coverage, overlap, trespass, excess)
+    return (missing, overlap, trespass, excess)

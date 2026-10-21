@@ -1,18 +1,18 @@
-"""Tests for the class-level COTe metrics (class_metrics module)."""
+"""Tests for the class-level MOTe metrics (class_metrics module)."""
 
 import pytest
 import numpy as np
 
-from cotescore.class_metrics import (
+from pymote.class_metrics import (
     coverage_matrix,
     overlap_matrix,
     trespass_matrix,
-    cote_class,
+    mote_class,
     class_confusion_counts,
     sum_class_counts,
     finalize_class_counts,
 )
-from cotescore.types import MaskInstance, ClassCOTeResult, ClassCOTeCounts
+from pymote.types import MaskInstance, ClassMOTeResult, ClassMOTeCounts
 
 
 TOLERANCE = 1e-9
@@ -64,7 +64,7 @@ class TestCoverageMatrix:
         background in its denominator: 50/100."""
         gt = _make_gt_ssu_map(H, W, {1: (0, 5, 0, 10), 2: (5, 9, 0, 10)})
         preds = [_mask(H, W, 0, 10, 0, 10, "A")]
-        result = cote_class(gt, SSU_TO_CLASS_2, preds)
+        result = mote_class(gt, SSU_TO_CLASS_2, preds)
         a, b = result.classes.index("A"), result.classes.index("B")
         assert abs(result.coverage_matrix[a, a] - 50 / 90) < TOLERANCE
         assert abs(result.coverage_matrix[a, b] - 40 / 90) < TOLERANCE
@@ -174,7 +174,7 @@ class TestOverlapMatrix:
             assert abs(O[a, a] - 2 / 3) < TOLERANCE, n_b
             assert abs(O[a, b] - 1 / 3) < TOLERANCE, n_b
 
-    def test_cote_class_and_counts_match_standalone(self):
+    def test_mote_class_and_counts_match_standalone(self):
         preds = [
             _mask(H, W, 0, 10, 0, 10, "A"),
             _mask(H, W, 0, 5, 0, 10, "A"),
@@ -182,7 +182,7 @@ class TestOverlapMatrix:
             _mask(H, W, 5, 10, 0, 10, "B"),
         ]
         O, classes = overlap_matrix(GT_2CLASS, SSU_TO_CLASS_2, preds)
-        via_class = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds).overlap_matrix
+        via_class = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds).overlap_matrix
         via_counts = finalize_class_counts(
             class_confusion_counts(GT_2CLASS, SSU_TO_CLASS_2, preds, classes)
         ).overlap_matrix
@@ -343,20 +343,20 @@ class TestTrespassMatrix:
 
 
 # ---------------------------------------------------------------------------
-# TestCOTeClass (combined wrapper)
+# TestMOTeClass (combined wrapper)
 # ---------------------------------------------------------------------------
 
 
-class TestCOTeClass:
+class TestMOTeClass:
 
     def test_returns_correct_type(self):
         preds = [_mask(H, W, 0, 5, 0, 10, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
-        assert isinstance(result, ClassCOTeResult)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        assert isinstance(result, ClassMOTeResult)
 
     def test_classes_ordered(self):
         preds = [_mask(H, W, 0, 5, 0, 10, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         assert result.classes == sorted(result.classes)
 
     def test_coverage_share_sums_to_one(self):
@@ -364,7 +364,7 @@ class TestCOTeClass:
             _mask(H, W, 0, 5, 0, 10, "A"),
             _mask(H, W, 5, 10, 0, 10, "B"),
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         assert abs(result.coverage_share.sum() - 1.0) < TOLERANCE
 
     def test_overlap_share_sums_to_one(self):
@@ -373,7 +373,7 @@ class TestCOTeClass:
             _mask(H, W, 0, 5, 0, 10, "A"),
             _mask(H, W, 0, 5, 0, 10, "A"),
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         if result.overlap_share.sum() > 0:
             assert abs(result.overlap_share.sum() - 1.0) < TOLERANCE
 
@@ -382,7 +382,7 @@ class TestCOTeClass:
             _mask(H, W, 5, 10, 0, 10, "A"),  # A pred on B GT
             _mask(H, W, 0, 5, 0, 10, "B"),  # B pred on A GT
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         if result.trespass_share.sum() > 0:
             assert abs(result.trespass_share.sum() - 1.0) < TOLERANCE
 
@@ -395,7 +395,7 @@ class TestCOTeClass:
             _mask(H, W, 0, 5, 0, 10, "A"),
             _mask(H, W, 0, 5, 0, 5, "B"),
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a, b = result.classes.index("A"), result.classes.index("B")
         assert abs(result.coverage_share[a] - 0.75) < TOLERANCE
         assert abs(result.coverage_share[b] - 0.25) < TOLERANCE
@@ -403,13 +403,13 @@ class TestCOTeClass:
         assert abs(result.overlap_share[b] - 0.5) < TOLERANCE
 
     def test_share_vectors_all_zero_when_no_preds(self):
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
         assert np.all(result.coverage_share == 0.0)
         assert np.all(result.overlap_share == 0.0)
         assert np.all(result.trespass_share == 0.0)
 
     def test_matrices_have_correct_shape(self):
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
         K = len(result.classes)
         assert result.coverage_matrix.shape == (K, K)
         assert result.overlap_matrix.shape == (K, K)
@@ -424,7 +424,7 @@ class TestCOTeClass:
             _mask(H, W, 0, 5, 0, 10, "A"),
             _mask(H, W, 5, 10, 0, 10, "B"),
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a, b = result.classes.index("A"), result.classes.index("B")
 
         # Coverage: C[A,A] = 50/50 = 1.0, C[B,B] = 1.0, off-diagonal = 0
@@ -445,19 +445,19 @@ class TestCOTeClass:
 
     def test_coverage_matrix_matches_standalone(self):
         preds = [_mask(H, W, 0, 7, 0, 10, "A"), _mask(H, W, 3, 10, 0, 10, "B")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         C_standalone, _ = coverage_matrix(GT_2CLASS, SSU_TO_CLASS_2, preds)
         assert np.allclose(result.coverage_matrix, C_standalone)
 
     def test_overlap_matrix_matches_standalone(self):
         preds = [_mask(H, W, 0, 5, 0, 10, "A"), _mask(H, W, 0, 5, 0, 10, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         O_standalone, _ = overlap_matrix(GT_2CLASS, SSU_TO_CLASS_2, preds)
         assert np.allclose(result.overlap_matrix, O_standalone)
 
     def test_trespass_matrix_matches_standalone(self):
         preds = [_mask(H, W, 5, 10, 0, 10, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         T_standalone, _ = trespass_matrix(GT_2CLASS, SSU_TO_CLASS_2, preds)
         assert np.allclose(result.trespass_matrix, T_standalone)
 
@@ -475,7 +475,7 @@ class TestCoveragePrecisionRecallF1:
         denominator as precision (A^P_k). With background they differ; see
         TestCoverageMatrix.test_background_excluded_rows_sum_to_one."""
         preds = [_mask(H, W, 0, 7, 0, 10, "A"), _mask(H, W, 3, 10, 0, 10, "B")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a, b = result.classes.index("A"), result.classes.index("B")
         assert abs(result.coverage_precision[a] - result.coverage_matrix[a, a]) < TOLERANCE
         assert abs(result.coverage_precision[b] - result.coverage_matrix[b, b]) < TOLERANCE
@@ -485,21 +485,21 @@ class TestCoveragePrecisionRecallF1:
         # Precision = 25/25 = 1.0 (normalised by pred area); recall = 25/50 = 0.5
         # (normalised by GT area) — these must differ.
         preds = [_mask(H, W, 0, 5, 0, 5, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a = result.classes.index("A")
         assert abs(result.coverage_precision[a] - 1.0) < TOLERANCE
         assert abs(result.coverage_recall[a] - 0.5) < TOLERANCE
 
     def test_f1_is_harmonic_mean(self):
         preds = [_mask(H, W, 0, 5, 0, 5, "A")]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a = result.classes.index("A")
         p, r = result.coverage_precision[a], result.coverage_recall[a]
         expected = 2 * p * r / (p + r)
         assert abs(result.coverage_f1[a] - expected) < TOLERANCE
 
     def test_zero_predictions_gives_zero_precision_and_f1(self):
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
         assert np.all(result.coverage_precision == 0.0)
         assert np.all(result.coverage_f1 == 0.0)
         assert result.micro_precision == 0.0
@@ -515,7 +515,7 @@ class TestCoveragePrecisionRecallF1:
             _mask(H, W, 0, 5, 0, 10, "A"),  # 50px, all on A's 50px GT
             _mask(H, W, 5, 6, 0, 10, "B"),  # 10px, all on B's 50px GT
         ]
-        result = cote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
         a, b = result.classes.index("A"), result.classes.index("B")
         assert abs(result.coverage_precision[a] - 1.0) < TOLERANCE
         assert abs(result.coverage_precision[b] - 1.0) < TOLERANCE
@@ -526,13 +526,66 @@ class TestCoveragePrecisionRecallF1:
 
 
 # ---------------------------------------------------------------------------
+# TestMissingByClass
+# ---------------------------------------------------------------------------
+
+
+class TestMissingByClass:
+    """Missing has no prediction class, so it is attributed to GT class l.
+    M_share[l] = sum(ms_l & ~mp_b) / sum(ms & ~mp_b); M_rate[l] = sum(ms_l & ~mp_b) / A^S_l
+    """
+
+    def test_one_class_fully_missed(self):
+        """Only A is predicted, so all missing area is B's."""
+        preds = [_mask(H, W, 0, 5, 0, 10, "A")]
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        a, b = result.classes.index("A"), result.classes.index("B")
+        np.testing.assert_allclose(result.missing_share[[a, b]], [0.0, 1.0])
+        np.testing.assert_allclose(result.missing_rate[[a, b]], [0.0, 1.0])
+
+    def test_partial_missing_both_classes(self):
+        """A covered on 3 of 5 rows (20 px missed), B on 4 of 5 rows (10 px missed)."""
+        preds = [_mask(H, W, 0, 3, 0, 10, "A"), _mask(H, W, 5, 9, 0, 10, "B")]
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        a, b = result.classes.index("A"), result.classes.index("B")
+        np.testing.assert_allclose(result.missing_share[[a, b]], [2 / 3, 1 / 3], atol=TOLERANCE)
+        np.testing.assert_allclose(result.missing_rate[[a, b]], [0.4, 0.2], atol=TOLERANCE)
+
+    def test_wrong_class_prediction_still_covers(self):
+        """Missing is class-agnostic coverage: a B pred on A's GT is not missing."""
+        preds = [_mask(H, W, 0, 5, 0, 10, "B")]
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        a = result.classes.index("A")
+        assert result.missing_rate[a] == 0.0
+
+    def test_no_predictions(self):
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, [])
+        np.testing.assert_allclose(result.missing_share, [0.5, 0.5])
+        np.testing.assert_allclose(result.missing_rate, [1.0, 1.0])
+
+    def test_nothing_missing(self):
+        preds = [_mask(H, W, 0, 10, 0, 10, "A")]
+        result = mote_class(GT_2CLASS, SSU_TO_CLASS_2, preds)
+        np.testing.assert_allclose(result.missing_share, [0.0, 0.0])
+        np.testing.assert_allclose(result.missing_rate, [0.0, 0.0])
+
+    def test_single_class_rate_matches_scalar_missing(self):
+        from pymote import missing
+
+        gt = _make_gt_ssu_map(H, W, {1: (0, 4, 0, 10), 2: (6, 10, 0, 6)})
+        preds = [_mask(H, W, 0, 3, 0, 7, "A"), _mask(H, W, 7, 10, 2, 9, "A")]
+        result = mote_class(gt, {1: "A", 2: "A"}, preds)
+        assert abs(result.missing_rate[0] - missing(gt, preds)) < TOLERANCE
+
+
+# ---------------------------------------------------------------------------
 # TestAccumulation
 # ---------------------------------------------------------------------------
 
 
 class TestAccumulation:
     """class_confusion_counts + sum_class_counts + finalize_class_counts must
-    match calling cote_class once on the union of the accumulated images —
+    match calling mote_class once on the union of the accumulated images —
     this is the multi-page dataset workflow the notebook relies on."""
 
     CLASSES = ["A", "B"]
@@ -560,7 +613,7 @@ class TestAccumulation:
 
     def _stitched_reference(self, page1, page2):
         """Stack the two pages vertically into one combined gt_ssu_map (with
-        disjoint SSU ids) and call cote_class once, as the ground truth for
+        disjoint SSU ids) and call mote_class once, as the ground truth for
         what accumulation should produce."""
         gt1, ssu1, preds1 = page1
         gt2, ssu2, preds2 = page2
@@ -580,12 +633,12 @@ class TestAccumulation:
             m[H:, :] = p.mask
             combined_preds.append(MaskInstance(mask=m, label=p.label))
 
-        return cote_class(combined_gt, combined_ssu, combined_preds)
+        return mote_class(combined_gt, combined_ssu, combined_preds)
 
     def test_class_confusion_counts_returns_correct_type(self):
         gt, ssu, preds = self._two_page_scenario()[0]
         counts = class_confusion_counts(gt, ssu, preds, self.CLASSES)
-        assert isinstance(counts, ClassCOTeCounts)
+        assert isinstance(counts, ClassMOTeCounts)
         assert counts.classes == self.CLASSES
         K = len(self.CLASSES)
         assert counts.coverage_numer.shape == (K, K)
@@ -607,6 +660,8 @@ class TestAccumulation:
             "coverage_share",
             "overlap_share",
             "trespass_share",
+            "missing_share",
+            "missing_rate",
             "coverage_precision",
             "coverage_recall",
             "coverage_f1",

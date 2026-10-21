@@ -102,7 +102,7 @@ class TestRunEvaluation:
 
     def test_predictions_csv_reproduces_metrics(self, tmp_path):
         import pandas as pd
-        from cotescore.map_metric import MAPMetric
+        from pymote.map_metric import MAPMetric
 
         results, csv_path = self._run(tmp_path)
         df = pd.read_csv(csv_path)

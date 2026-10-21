@@ -22,9 +22,9 @@ sys.path.insert(0, str(project_root))
 
 from models.doclayout_yolo import DocLayoutYOLO
 from models.docling_heron import DoclingLayoutHeron
-from cotescore.dataset import HierTextDataset
-from cotescore.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
-from cotescore.layout import mean_iou, coverage, overlap, trespass, excess, cote_score
+from pymote.dataset import HierTextDataset
+from pymote.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote.layout import mean_iou, missing, overlap, trespass, excess, mote
 
 EVAL_MAX_DIM = 2000
 
@@ -111,25 +111,25 @@ def create_comparison_image(
 
     descriptions = {
         "mean_iou": "Intersection over Union",
-        "coverage": "GT area covered",
+        "missing": "GT area not covered",
         "overlap": "Prediction duplicates",
         "trespass": "Wrong GT overlap",
         "excess": "Background coverage",
-        "cote_score": "Overall quality (C-O-T)",
+        "mote": "Overall error (M+O+T)",
     }
 
-    metric_order = ["cote_score", "coverage", "overlap", "trespass", "excess", "mean_iou"]
+    metric_order = ["mote", "missing", "overlap", "trespass", "excess", "mean_iou"]
     sorted_metrics = {k: metrics[k] for k in metric_order if k in metrics}
 
     for metric, score in sorted_metrics.items():
-        if metric == "cote_score":
-            if score > 0.7:
+        if metric == "mote":
+            if score < 0.3:
                 color = COLORS["ground_truth"]
-            elif score < 0:
+            elif score > 1.0:
                 color = COLORS["prediction"]
             else:
                 color = COLORS["text"]
-        elif metric in ["overlap", "trespass", "excess"]:
+        elif metric in ["missing", "overlap", "trespass", "excess"]:
             color = (
                 COLORS["ground_truth"]
                 if score < 0.2
@@ -142,10 +142,7 @@ def create_comparison_image(
                 else (COLORS["prediction"] if score < 0.5 else COLORS["text"])
             )
 
-        if metric == "cote_score":
-            score_str = f"{score:+.4f}"
-        else:
-            score_str = f"{score:.4f}"
+        score_str = f"{score:.4f}"
 
         draw.text((20, y_offset), f"  {metric.upper()}: {score_str}", fill=color, font=metric_font)
         y_offset += 25
@@ -300,16 +297,16 @@ def main():
 
         metrics = {
             "mean_iou": mean_iou(predictions, ground_truth),
-            "coverage": coverage(gt_ssu_map, pred_masks),
+            "missing": missing(gt_ssu_map, pred_masks),
             "overlap": overlap(gt_ssu_map, pred_masks),
             "trespass": trespass(gt_ssu_map, pred_masks),
             "excess": excess(gt_ssu_map, pred_masks),
-            "cote_score": cote_score(gt_ssu_map, pred_masks)[0],
+            "mote": mote(gt_ssu_map, pred_masks).mote,
         }
 
         print(f"  GT: {len(ground_truth)}, Preds: {len(predictions)}")
         print(
-            f"  Metrics: COT={metrics['cote_score']:+.3f}, Cov={metrics['coverage']:.3f}, "
+            f"  Metrics: MOTe={metrics['mote']:.3f}, Miss={metrics['missing']:.3f}, "
             f"Ovlp={metrics['overlap']:.3f}, Tres={metrics['trespass']:.3f}, "
             f"Excess={metrics['excess']:.3f}, IoU={metrics['mean_iou']:.3f}"
         )

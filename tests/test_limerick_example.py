@@ -8,16 +8,16 @@ FileNotFoundError is the failure this suite exists to catch.
 import numpy as np
 import pytest
 
-from cotescore import (
+from pymote import (
     chars_to_region_chars,
-    cote_score,
+    mote,
     extract_line_boxes,
     extract_ssu_boxes,
     extract_word_boxes,
     load_limerick_example,
     reconstruct_text,
 )
-from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
 
 EXPECTED_COLUMNS = [
@@ -120,7 +120,7 @@ class TestDerivedBoxes:
         masks = boxes_to_pred_masks(
             extract_ssu_boxes(chars), width, height, width, height
         )
-        _, _, overlap, trespass, _ = cote_score(gt_map, masks)
+        _, _, overlap, trespass, _ = mote(gt_map, masks)
         assert trespass == pytest.approx(0.0)
         assert overlap == pytest.approx(0.0)
 
@@ -166,9 +166,9 @@ class TestScoring:
             extract_ssu_boxes(chars), width, height, width, height
         )
         masks = boxes_to_pred_masks(predictions, width, height, width, height)
-        cote, coverage, overlap, trespass, excess = cote_score(gt_map, masks)
+        error, missing, overlap, trespass, excess = mote(gt_map, masks)
 
-        assert 0.0 < coverage < 1.0
+        assert 0.0 < missing < 1.0
         for component in (overlap, trespass, excess):
             assert component > 0.0, "predictions no longer exercise every state"
-        assert cote == pytest.approx(coverage - overlap - trespass)
+        assert error == pytest.approx(missing + overlap + trespass)

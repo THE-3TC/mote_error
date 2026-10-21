@@ -14,11 +14,11 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import cot_score
+# Add parent directory to path to import pymote
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cotescore import metrics
-from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote import layout as metrics
+from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 from tests import reference_metrics
 
 

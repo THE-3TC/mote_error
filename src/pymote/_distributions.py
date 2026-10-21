@@ -4,7 +4,7 @@ Builders produce Counter[str] objects representing token frequency distributions
 All builders return the same type so the metric functions in ocr.py can consume
 them uniformly, regardless of whether tokens are characters or words.
 
-Do not import this module from outside the cotescore package.
+Do not import this module from outside the pymote package.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Dict, Sequence, Tuple, Union
 
 import numpy as np
 
-from cotescore.types import MaskInstance, RegionChars, RegionPixels, TokenPositions
+from pymote.types import MaskInstance, RegionChars, RegionPixels, TokenPositions
 
 # Accepted types for predicted region geometry in build_R_spatial / decomp functions.
 # RegionPixels: generic (supports polygons / arbitrary shapes).

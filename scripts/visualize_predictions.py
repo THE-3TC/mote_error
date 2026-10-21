@@ -17,9 +17,9 @@ sys.path.insert(0, str(project_root))
 
 from models.doclayout_yolo import DocLayoutYOLO
 from models.docling_heron import DoclingLayoutHeron
-from cotescore.dataset import NCSEDataset
-from cotescore.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
-from cotescore.layout import mean_iou, coverage, overlap, trespass, excess, cote_score
+from pymote.dataset import NCSEDataset
+from pymote.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote.layout import mean_iou, missing, overlap, trespass, excess, mote
 
 EVAL_MAX_DIM = 2000
 
@@ -108,28 +108,28 @@ def create_comparison_image(
 
     descriptions = {
         "mean_iou": "Intersection over Union",
-        "coverage": "GT area covered",
+        "missing": "GT area not covered",
         "overlap": "Prediction duplicates",
         "trespass": "Wrong GT overlap",
         "excess": "Background coverage",
-        "cote_score": "Overall quality (C-O-T)",
+        "mote": "Overall error (M+O+T)",
     }
 
     # Define metric order for display
-    metric_order = ["cote_score", "coverage", "overlap", "trespass", "excess", "mean_iou"]
+    metric_order = ["mote", "missing", "overlap", "trespass", "excess", "mean_iou"]
     sorted_metrics = {k: metrics[k] for k in metric_order if k in metrics}
 
     for metric, score in sorted_metrics.items():
         # Color coding based on metric type
-        if metric == "cote_score":
-            # COT score: green if > 0.7, red if < 0, yellow otherwise
-            if score > 0.7:
+        if metric == "mote":
+            # MOTe error: green if < 0.3, red if > 1, neutral otherwise
+            if score < 0.3:
                 color = COLORS["ground_truth"]
-            elif score < 0:
+            elif score > 1.0:
                 color = COLORS["prediction"]
             else:
                 color = COLORS["text"]
-        elif metric in ["overlap", "trespass", "excess"]:
+        elif metric in ["missing", "overlap", "trespass", "excess"]:
             # Lower is better
             color = (
                 COLORS["ground_truth"]
@@ -137,18 +137,14 @@ def create_comparison_image(
                 else (COLORS["prediction"] if score > 0.5 else COLORS["text"])
             )
         else:
-            # Higher is better (coverage, mean_iou)
+            # Higher is better (mean_iou)
             color = (
                 COLORS["ground_truth"]
                 if score > 0.8
                 else (COLORS["prediction"] if score < 0.5 else COLORS["text"])
             )
 
-        # Format score with sign for COT score
-        if metric == "cote_score":
-            score_str = f"{score:+.4f}"
-        else:
-            score_str = f"{score:.4f}"
+        score_str = f"{score:.4f}"
 
         draw.text((20, y_offset), f"  {metric.upper()}: {score_str}", fill=color, font=metric_font)
         y_offset += 25
@@ -277,7 +273,7 @@ def main():
         print(f"Processing {filename}...")
         predictions = model.predict(image_path)
 
-        # Get image dimensions for excess and cote_score
+        # Get image dimensions for excess and mote
         with Image.open(image_path) as img:
             image_width, image_height = img.size
 
@@ -287,16 +283,16 @@ def main():
 
         metrics = {
             "mean_iou": mean_iou(predictions, ground_truth),
-            "coverage": coverage(gt_ssu_map, pred_masks),
+            "missing": missing(gt_ssu_map, pred_masks),
             "overlap": overlap(gt_ssu_map, pred_masks),
             "trespass": trespass(gt_ssu_map, pred_masks),
             "excess": excess(gt_ssu_map, pred_masks),
-            "cote_score": cote_score(gt_ssu_map, pred_masks)[0],
+            "mote": mote(gt_ssu_map, pred_masks).mote,
         }
 
         print(f"  GT: {len(ground_truth)}, Preds: {len(predictions)}")
         print(
-            f"  Metrics: COT={metrics['cote_score']:+.3f}, Cov={metrics['coverage']:.3f}, "
+            f"  Metrics: MOTe={metrics['mote']:.3f}, Miss={metrics['missing']:.3f}, "
             f"Ovlp={metrics['overlap']:.3f}, Tres={metrics['trespass']:.3f}, "
             f"Excess={metrics['excess']:.3f}, IoU={metrics['mean_iou']:.3f}"
         )

@@ -3,8 +3,8 @@ from collections import Counter
 from typing import Callable, List, Dict, NamedTuple, Union, Tuple, Optional
 import numpy as np
 
-from cotescore.types import CDDDecomposition, RegionChars, SpACERDecomposition
-from cotescore._distributions import PredRegions
+from pymote.types import CDDDecomposition, RegionChars, SpACERDecomposition
+from pymote._distributions import PredRegions
 
 
 
@@ -283,7 +283,7 @@ def cdd_decomp(
                       :func:`text_to_counter` using ``mode``.
                     - A pre-built ``Counter`` — used directly. This is
                       necessary when a distribution was built from spatial
-                      data (e.g. ``build_R`` from :mod:`cotescore._distributions`)
+                      data (e.g. ``build_R`` from :mod:`pymote._distributions`)
                       and cannot be reconstructed from text alone.
 
         metric:     Callable ``(Counter, Counter) -> float`` used to compare
@@ -423,7 +423,7 @@ def cdd_decomp_spatial(
     Returns:
         :class:`CDDDecomposition`. Components requiring absent data are None.
     """
-    from cotescore._distributions import build_R_spatial
+    from pymote._distributions import build_R_spatial
 
     Q = Counter(gt_chars.tokens.tolist())
     R_agg, _ = build_R_spatial(gt_chars, pred_region_pixels)
@@ -463,7 +463,7 @@ def spacer_decomp_spatial(
         :class:`SpACERDecomposition`. ``d_pars_micro`` is always ``None``.
         Other components requiring absent data are also ``None``.
     """
-    from cotescore._distributions import build_R_spatial
+    from pymote._distributions import build_R_spatial
 
     Q = Counter(gt_chars.tokens.tolist())
     R_agg, R_per_pred = build_R_spatial(gt_chars, pred_region_pixels)

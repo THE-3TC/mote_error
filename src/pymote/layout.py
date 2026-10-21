@@ -1,22 +1,25 @@
 """
 Document layout analysis metrics
 
-This module provides metrics for evaluating document layout analysis predictions:
-- coverage: Measures how well predictions cover ground truth regions
+This module provides the MOTe error and its components for evaluating
+document layout analysis predictions:
+- mote: Composite error, Missing + Overlap + Trespass (0 = perfect)
+- missing: Fraction of ground truth area not covered by any prediction
+- coverage: Fraction of ground truth area covered (the complement of missing)
 - overlap: Measures duplication/repetition in predictions
-- iou: Intersection over Union for two boxes
-- mean_iou: Average IoU across all ground truth boxes
-- trespass: Measures false positive coverage on wrong ground truth regions
-- excess: Measures coverage of background (non-ground truth) area
+- trespass: Measures predictions crossing into SSUs they are not assigned to
+- excess: Support metric, coverage of background (non-ground truth) area
+
+It also keeps the conventional instance-matching baselines (iou, mean_iou, f1).
 """
 
 from typing import List, Dict, Any, Union, Tuple, Optional, Iterable, Sequence, overload
 import numpy as np
 import collections
 
-from cotescore.types import GTBoxes, MaskInstance
-from cotescore.adapters import calculate_intersection_area as _calculate_intersection_area
-from cotescore._core import (
+from pymote.types import GTBoxes, MaskInstance, MOTeResult
+from pymote.adapters import calculate_intersection_area as _calculate_intersection_area
+from pymote._core import (
     _as_pred_masks,
     _check_gt_map,
     _ms_mask,
@@ -24,7 +27,7 @@ from cotescore._core import (
     _compose_pred_count,
     _owner_ssu_id,
 )
-from cotescore._core_bbox import bbox_cote_components
+from pymote._core_bbox import bbox_mote_components
 
 
 BBox = Dict[str, Any]
@@ -40,7 +43,7 @@ def coverage(
 
     Coverage measures how well predicted regions cover the ground truth regions.
     It is the ratio of ground truth area covered by predictions to total ground
-    truth area.
+    truth area. It is the complement of :func:`missing`.
 
     Args:
         gt_ssu_map: 2D integer array of SSU ids. Background must be 0.
@@ -48,20 +51,44 @@ def coverage(
             Each mask must have the same shape as gt_ssu_map.
 
     Returns:
-        Coverage score [0.0, 1.0].
+        Coverage score [0.0, 1.0]. 1.0 when there is no ground truth, as
+        there is nothing to miss.
     """
     gt_ssu_map = _check_gt_map(gt_ssu_map)
     pred_masks = _as_pred_masks(preds)
     ms = _ms_mask(gt_ssu_map)
     a_s = _area_s(ms)
     if a_s == 0:
-        return 1.0 if not pred_masks else 0.0
+        return 1.0
     if not pred_masks:
         return 0.0
     mp = _compose_pred_count(pred_masks, gt_ssu_map.shape)
     mpb = mp > 0
     covered_area = int(np.sum(ms & mpb))
     return float(covered_area / a_s)
+
+
+def missing(
+    gt_ssu_map: np.ndarray,
+    preds: Sequence[Union[np.ndarray, MaskInstance]],
+) -> float:
+    """
+    Calculate the Missing error, the complement of :func:`coverage`.
+
+    Missing is the fraction of ground truth area not covered by any
+    prediction. An SSU with no prediction raises Missing directly, so no
+    separate false-negative count is needed.
+
+    Args:
+        gt_ssu_map: 2D integer array of SSU ids. Background must be 0.
+        preds: Sequence of prediction masks (2D numpy arrays) or MaskInstance.
+            Each mask must have the same shape as gt_ssu_map.
+
+    Returns:
+        Missing score [0.0, 1.0]. 0 means nothing is missing, 1 means no
+        coverage. 0.0 when there is no ground truth.
+    """
+    return 1.0 - coverage(gt_ssu_map, preds)
 
 
 def overlap(
@@ -129,7 +156,7 @@ def f1(
     is at least ``threshold``. Matched predictions are true positives (TP),
     unmatched predictions false positives (FP), and unmatched GT boxes false
     negatives (FN). Classes are ignored; for class-aware or dataset-level F1
-    use :class:`cotescore.map_metric.MAPMetric`, which applies the same rule.
+    use :class:`pymote.map_metric.MAPMetric`, which applies the same rule.
 
     Args:
         predicted_regions: List of predicted bounding boxes, optionally with a
@@ -203,6 +230,10 @@ def trespass(
     Trespass measures how much of the ground truth is covered by a prediction
     that belongs to a different SSU (Ground Truth Region).
 
+    Each prediction is assigned to the SSU making up most of its area; ties go
+    to the lowest SSU id, so SSU ids should follow reading order. Predictions
+    that overlap no SSU are unassigned and contribute no trespass.
+
     Args:
         gt_ssu_map: 2D integer array of SSU ids. Background must be 0.
         preds: Sequence of prediction masks (2D numpy arrays) or MaskInstance.
@@ -262,35 +293,41 @@ def excess(
     return min(1.0, max(0.0, float(e_val)))
 
 
-def cote_score(
+def mote(
     gt_ssu_map: Union[np.ndarray, GTBoxes],
     preds: Union[Sequence[Union[np.ndarray, MaskInstance]], np.ndarray],
-    weight_coverage: float = 1.0,
+    weight_missing: float = 1.0,
     weight_overlap: float = 1.0,
     weight_trespass: float = 1.0,
-) -> Tuple[float, float, float, float, float]:
-    """Compute the full COTe score decomposition for a set of predictions.
+) -> MOTeResult:
+    """Compute the MOTe error and its decomposition for a set of predictions.
 
-    Returns the weighted composite COTe score together with the four
-    individual component values: Coverage, Overlap, Trespass, and Excess.
+    ``MOTe = w_M * Missing + w_O * Overlap + w_T * Trespass``. Excess is
+    returned as a support metric but is not part of the sum.
+
+    With unit weights 0 is a perfectly parsed result and 1 occurs when there
+    are no predictions. A value greater than 1 means Overlap plus Trespass
+    exceeds the Coverage of the predictions. The theoretical upper bound is
+    ``2n - 1`` for ``n`` assigned predictions. When there is no ground truth
+    Missing, Overlap and Trespass are all 0. For panoptic inputs Overlap is 0
+    by construction.
 
     Supports two mutually exclusive representations, dispatched by the type
     of `gt_ssu_map`:
 
     - Mask mode (default): `gt_ssu_map` is a 2D integer pixel array and
-      `preds` is a sequence of prediction masks. This rasterizes-then-scores,
-      exactly as before.
-    - Bbox mode: `gt_ssu_map` is a :class:`~cotescore.types.GTBoxes` instance
+      `preds` is a sequence of prediction masks.
+    - Bbox mode: `gt_ssu_map` is a :class:`~pymote.types.GTBoxes` instance
       and `preds` is an ``(M, 4)`` array of predicted boxes in
-      ``[x, y, width, height]`` format. This computes all four components
+      ``[x, y, width, height]`` format. This computes all components
       analytically via coordinate compression, without ever allocating a
       pixel raster -- much faster when predictions are boxes rather than
       masks (the common case for doc-layout models).
 
     Mixing representations (e.g. `GTBoxes` with a mask sequence, or a pixel
     array with a box array) is not supported and raises `TypeError` --
-    rasterize the box side first via :func:`~cotescore.adapters.boxes_to_gt_ssu_map`/
-    :func:`~cotescore.adapters.boxes_to_pred_masks` instead of mixing modes.
+    rasterize the box side first via :func:`~pymote.adapters.boxes_to_gt_ssu_map`/
+    :func:`~pymote.adapters.boxes_to_pred_masks` instead of mixing modes.
     Note: passing a bare ``(K, 4)`` integer array as `gt_ssu_map` (forgetting
     to wrap it in `GTBoxes`) is not detected and will be silently
     misinterpreted as a tiny pixel mask, since both are valid 2D integer
@@ -299,23 +336,19 @@ def cote_score(
     Args:
         gt_ssu_map: Either a 2D integer array where each pixel holds the SSU
             id of its ground-truth region (0 = background), or a
-            :class:`~cotescore.types.GTBoxes` instance for the bbox fast path.
+            :class:`~pymote.types.GTBoxes` instance for the bbox fast path.
         preds: For mask mode: sequence of predictions, each either a 2D
-            boolean numpy array or a :class:`~cotescore.types.MaskInstance`.
+            boolean numpy array or a :class:`~pymote.types.MaskInstance`.
             For bbox mode: an ``(M, 4)`` numpy array of predicted boxes in
             ``[x, y, width, height]`` format, same coordinate frame as
             `gt_ssu_map.boxes`.
-        weight_coverage: Weight applied to the Coverage component in the
-            composite score (default 1.0).
-        weight_overlap: Weight applied to the Overlap component in the
-            composite score (default 1.0).
-        weight_trespass: Weight applied to the Trespass component in the
-            composite score (default 1.0).
+        weight_missing: Weight applied to Missing (default 1.0).
+        weight_overlap: Weight applied to Overlap (default 1.0).
+        weight_trespass: Weight applied to Trespass (default 1.0).
 
     Returns:
-        A 5-tuple ``(cote, coverage, overlap, trespass, excess)`` where
-        ``cote = weight_coverage * C - weight_overlap * O - weight_trespass * T``
-        and each component is in the range ``[0.0, 1.0]``.
+        A :class:`~pymote.types.MOTeResult` named tuple
+        ``(mote, missing, overlap, trespass, excess)``.
 
     Raises:
         TypeError: If `gt_ssu_map` and `preds` use mismatched representations.
@@ -328,7 +361,7 @@ def cote_score(
                 "sequence. Rasterize preds first via boxes_to_pred_masks(...) "
                 "if it is actually masks."
             )
-        C, O, T, E = bbox_cote_components(gt_ssu_map, preds)
+        M, O, T, E = bbox_mote_components(gt_ssu_map, preds)
     else:
         if isinstance(preds, np.ndarray) and preds.ndim == 2 and preds.shape[1] == 4:
             raise TypeError(
@@ -338,29 +371,25 @@ def cote_score(
             )
         gt_ssu_map = _check_gt_map(gt_ssu_map)
         pred_masks = _as_pred_masks(preds)
-        n = len(pred_masks)
-        C = coverage(gt_ssu_map, pred_masks)
+        M = missing(gt_ssu_map, pred_masks)
+        O = overlap(gt_ssu_map, pred_masks)
         T = trespass(gt_ssu_map, pred_masks)
-        if n <= 1:
-            O = 0.0
-        else:
-            O = overlap(gt_ssu_map, pred_masks)
         E = excess(gt_ssu_map, pred_masks)
-    cot = (weight_coverage * C) - (weight_overlap * O) - (weight_trespass * T)
-    return (float(cot), float(C), float(O), float(T), float(E))
-
+    error = (weight_missing * M) + (weight_overlap * O) + (weight_trespass * T)
+    return MOTeResult(float(error), float(M), float(O), float(T), float(E))
 
 
 
 __all__ = [
     "coverage",
+    "missing",
     "overlap",
     "iou",
     "mean_iou",
     "f1",
     "trespass",
     "excess",
-    "cote_score",
+    "mote",
 ]
 
 

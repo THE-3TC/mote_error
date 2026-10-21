@@ -1,9 +1,9 @@
-"""Re-score saved Spiritualist predictions with cotescore's BenchmarkRunner (no inference).
+"""Re-score saved Spiritualist predictions with pymote's BenchmarkRunner (no inference).
 
 GT is SpACER's gt_line_boxes.csv: one box per text line, labelled with its article-level SSU
 (the same labels as gt_ssu_bboxes.csv and characters_inferred.parquet).
 
-Usage (from the cotescore repo root):
+Usage (from the pymote repo root):
     python rescore_spiritualist.py IMAGES_DIR GT_LINES_CSV BBOX_DIR OUTPUT_DIR
 """
 

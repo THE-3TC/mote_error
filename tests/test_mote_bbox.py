@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from cotescore import GTBoxes, mote
-from cotescore.types import MaskInstance
-from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-from cotescore._core_bbox import (
+from pymote import GTBoxes, mote
+from pymote.types import MaskInstance
+from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote._core_bbox import (
     _build_compressed_grid,
     _box_to_cells,
     bbox_mote_components,
@@ -258,7 +258,7 @@ class TestBboxMoteBasic:
         # are observable; use trespass to surface which owner was assigned by
         # constructing a second GT region owned by a different id.
         # Simplest direct probe: paint owner and check its value directly.
-        from cotescore._core_bbox import _build_compressed_grid, _paint_gt_owner
+        from pymote._core_bbox import _build_compressed_grid, _paint_gt_owner
 
         grid = _build_compressed_grid(gt.boxes, np.zeros((0, 4)))
         owner = _paint_gt_owner(grid, gt.boxes, gt.ssu_ids)

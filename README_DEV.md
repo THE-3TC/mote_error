@@ -27,13 +27,13 @@ pip install -e ".[models]"
 pytest
 
 # Run with coverage
-pytest --cov=cot_score --cov=models --cov=benchmarks
+pytest --cov=pymote --cov=models --cov=benchmarks
 
 # Run specific test file
 pytest tests/test_metrics.py
 
 # Run specific test
-pytest tests/test_metrics.py::TestCoverage::test_coverage_perfect_match
+pytest tests/test_metrics.py::TestMOTe::test_mote_perfect_score
 ```
 
 ## Code Quality
@@ -49,16 +49,20 @@ isort .
 flake8 .
 
 # Type checking
-mypy cot_score models benchmarks
+mypy src/pymote models benchmarks
 ```
 
 ## Project Structure
 
 ```
-cot_analysis/
-├── cot_score/          # Core metrics library
-│   ├── metrics.py      # Coverage and Overlap metrics
-│   └── dataset.py      # NCSE dataset loader
+pymote/
+├── src/pymote/      # Core metrics library
+│   ├── layout.py       # MOTe error and components (mask mode)
+│   ├── _core_bbox.py   # Analytic bounding-box fast path for MOTe
+│   ├── class_metrics.py# Class-level MOTe decomposition
+│   ├── visualisation.py# MOTe pixel-state overlays
+│   ├── ocr.py          # Character Error Vector (SpACER, CDD)
+│   └── dataset.py      # Dataset loaders
 ├── models/             # Model loading and inference
 │   └── loader.py       # Base model class
 ├── benchmarks/         # Benchmarking framework

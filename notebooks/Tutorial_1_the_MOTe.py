@@ -15,27 +15,30 @@ def _():
 def _(mo):
     mo.md(
         r"""
-    # COTe on NCSE: a worked example
+    # MOTe on NCSE: a worked example
 
     This is the first of two notebooks. Here we evaluate **document layout parsing** with the
-    **COTe** score. The second notebook (`Tutorial_2_the_CEV.py`) picks up the predictions saved
+    **MOTe** error. The second notebook (`Tutorial_2_the_CEV.py`) picks up the predictions saved
     here and evaluates the **OCR** stage with the CEV.
 
-    COTe decomposes layout quality into four quantities, each defined over the pixels of a
+    MOTe decomposes layout error into four quantities, each defined over the pixels of a
     **Structural Semantic Unit** (SSU) — a semantically complete region such as a whole article,
     which may be split across several columns:
 
-    - **Coverage (C)** — the fraction of ground-truth SSU pixels that some prediction covers.
-      Higher is better.
+    - **Missing (M)** — the fraction of ground-truth SSU pixels that no prediction covers, the
+      complement of Coverage. Lower is better.
     - **Overlap (O)** — redundant prediction: SSU pixels claimed by more than one predicted
       region, counted once per extra claim. Lower is better.
     - **Trespass (T)** — predictions that straddle a boundary, pulling pixels from an SSU other
       than the one they mostly belong to. This is what punishes merging two articles into one
       region. Lower is better.
     - **excess (E)** — predicted pixels that fall on background. Reported alongside, but *not*
-      part of the composite score.
+      part of the composite error.
 
-    $$\text{COTe} = C - O - T$$
+    $$\text{MOTe} = M + O + T$$
+
+    A perfect parse scores 0 and a page with no predictions scores 1. Values above 1 are
+    possible, when Overlap and Trespass outweigh the area the predictions cover.
 
     Every pixel is assigned exactly one state, so the components cannot double-count.
 
@@ -48,7 +51,7 @@ def _(mo):
     can find every column perfectly and still score badly under F1 simply for disagreeing about
     granularity.
 
-    COTe scores the pixel coverage of the SSUs, making it robust to granularity differences.
+    MOTe scores the pixel coverage of the SSUs, making it robust to granularity differences.
 
     By the end of this notebook you will have, for **two** layout models, a per-page score table,
     a dataset-level summary, and a folder of colour-coded diagnostic images showing exactly where
@@ -66,7 +69,7 @@ def _(mo):
 
     Everything the notebook needs is a folder of page images and a ground-truth CSV. Both are
     plain strings — point them at your own data to reuse this notebook. Note your GT may be in
-    a different format to the NCSE example and may need converting to a COTe-compatible format.
+    a different format to the NCSE example and may need converting to a MOTe-compatible format.
 
     The ground-truth CSV needs the columns `filename, x1, y1, x2, y2, class, ssu_id, ssu_class`.
     If it also carries `image_width`, coordinates are rescaled automatically when the CSV was
@@ -84,8 +87,8 @@ def _(mo):
 @app.cell
 def _():
     # --- Point these at your data -------------------------------------------------
-    NCSE_IMAGES_DIR = "cotescore/data/ncsev2/images"
-    NCSE_GT_CSV = "cotescore/data/ncsev2/ncse_testset_bboxes.csv"
+    NCSE_IMAGES_DIR = "pymote/data/ncsev2/images"
+    NCSE_GT_CSV = "pymote/data/ncsev2/ncse_testset_bboxes.csv"
 
     # --- Where results are written ------------------------------------------------
     PRED_DIR = "outputs/predictions"
@@ -115,15 +118,15 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from cotescore.adapters import (
+    from pymote.adapters import (
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
         compute_canvas,
     )
-    from cotescore.dataset import NCSEDataset
-    from cotescore.layout import cote_score, f1, mean_iou
-    from cotescore.types import GTBoxes
-    from cotescore.visualisation import compute_cote_masks, visualize_cote_states
+    from pymote.dataset import NCSEDataset
+    from pymote.layout import f1, mean_iou, mote
+    from pymote.types import GTBoxes
+    from pymote.visualisation import compute_mote_masks, visualize_mote_states
 
     return (
         GTBoxes,
@@ -133,14 +136,14 @@ def _():
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
         compute_canvas,
-        compute_cote_masks,
-        cote_score,
+        compute_mote_masks,
         f1,
         mean_iou,
+        mote,
         np,
         pd,
         plt,
-        visualize_cote_states,
+        visualize_mote_states,
     )
 
 
@@ -212,7 +215,7 @@ def _(mo):
 
     Below, one page's ground-truth boxes are coloured **by `ssu_id`**. Boxes sharing a colour
     belong to the same semantic unit, typically one article running across several columns.
-    This distinguishes the COTe from the traditional IoU/F1 approaches which are purely spatial,
+    This distinguishes the MOTe from the traditional IoU/F1 approaches which are purely spatial,
     and do not include semantic information.
     """
     )
@@ -263,7 +266,7 @@ def _(mo):
         r"""
     ### Using your own data
 
-    COTe needs only two things: **ground-truth boxes in XYWH, each carrying an integer
+    MOTe needs only two things: **ground-truth boxes in XYWH, each carrying an integer
     `ssu_id`**, and the **image extent**. The extent is required because *excess* divides by
     total background area.
 
@@ -273,9 +276,9 @@ def _(mo):
       predictions as an `(M, 4)` array. Computed analytically, nothing is rasterised. This is
       is used in this tutorial.
     - **Mask path** — a 2-D `gt_ssu_map` of SSU ids plus a list of prediction masks. Needed for
-      segmentation models and for `compute_cote_masks`. see section 5.
+      segmentation models and for `compute_mote_masks`. see section 5.
 
-    All the loaders in `cotescore.dataset` return the same annotation structure:
+    All the loaders in `pymote.dataset` return the same annotation structure:
 
     ```python
     {"x", "y", "width", "height", "class", "ssu_id", "ssu_class", "confidence", "page_id"}
@@ -328,7 +331,7 @@ def _(DEVICE):
     import sys
     from pathlib import Path as _P
 
-    # The layout models live in `models/`, a top-level directory of the cotescore repo rather
+    # The layout models live in `models/`, a top-level directory of the pymote repo rather
     # than part of the installed package. Marimo puts the *notebook's* directory on sys.path,
     # not the repo root, so locate the root by walking up and add it explicitly.
     try:
@@ -342,7 +345,7 @@ def _(DEVICE):
             break
     else:
         raise RuntimeError(
-            "Could not find the cotescore repo root (no models/docling_heron.py found "
+            "Could not find the pymote repo root (no models/docling_heron.py found "
             f"walking up from {_start}). Run this notebook from inside the repo."
         )
 
@@ -368,14 +371,14 @@ def _(mo):
 
     We run one inference pass per model and score each page as we go.
 
-    Ground truth is available as boxes, so we use COTe's **analytic bounding-box fast path**:
+    Ground truth is available as boxes, so we use MOTe's **analytic bounding-box fast path**:
     wrap the GT in a `GTBoxes` (which also carries the image extent, because *excess* needs a
     background-area denominator) and pass predictions as an `(M, 4)` XYWH array. This avoids
     rasterising anything.
 
     ```python
     gt = GTBoxes(boxes=gt_xywh, ssu_ids=ssu_ids, image_width=w, image_height=h)
-    cote, C, O, T, E = cote_score(gt, pred_xywh)
+    error, M, O, T, E = mote(gt, pred_xywh)
     ```
 
     `f1` and `mean_iou` take the annotation dicts directly and give us the instance-matching
@@ -387,7 +390,7 @@ def _(mo):
 
 
 @app.cell
-def _(GTBoxes, Image, cote_score, f1, mean_iou, np):
+def _(GTBoxes, Image, f1, mean_iou, mote, np):
     def score_page(sample, predictions):
         """Score one page. Returns (metrics_dict, image_width, image_height)."""
         with Image.open(sample["image_path"]) as _im:
@@ -406,13 +409,13 @@ def _(GTBoxes, Image, cote_score, f1, mean_iou, np):
             [[p["x"], p["y"], p["width"], p["height"]] for p in predictions], dtype=float
         ).reshape(-1, 4)
 
-        cote, cov, ov, tr, ex = cote_score(gt, pred_xywh)
+        error, miss, ov, tr, ex = mote(gt, pred_xywh)
 
         return (
             {
                 "filename": sample["filename"],
-                "cote": cote,
-                "coverage": cov,
+                "mote": error,
+                "missing": miss,
                 "overlap": ov,
                 "trespass": tr,
                 "excess": ex,
@@ -515,13 +518,13 @@ def _(mo):
 
     One row per model, averaged over pages.
 
-    Read the row left to right. **Coverage** near 1 means the model covers all semantic elements.
+    Read the row left to right. **Missing** near 0 means the model covers all semantic elements.
     **Overlap** is when multiple predictions cover the same region. **Trespass** is the boundary 
     error that punishes merging separate articles. **Excess** is prediction spilling onto 
     background.
 
-    Then compare `cote` against `f1_50` and `mean_iou`. Where a model splits SSUs into columns —
-    correct pixels, wrong box count — COTe stays high while F1 falls.
+    Then compare `mote` against `f1_50` and `mean_iou`. Where a model splits SSUs into columns —
+    correct pixels, wrong box count — MOTe stays low while F1 falls.
     """
     )
     return
@@ -530,8 +533,8 @@ def _(mo):
 @app.cell
 def _(all_scores):
     _cols = [
-        "cote",
-        "coverage",
+        "mote",
+        "missing",
         "overlap",
         "trespass",
         "excess",
@@ -549,16 +552,16 @@ def _(all_scores):
 def _(mo):
     mo.md(
         r"""
-    ### COTe against F1, page by page
+    ### MOTe against F1, page by page
 
     The figure below shows a scatter plot of the performance of the Heron and Yolo models
-    across the NCSE test set. Each point represents a single page, with the x-axis showing 
-    the F1 score at IoU 0.5 and the y-axis showing the COTe score. The dashed line represents
-    the line of equality (y = x). Points above the line indicate that COTe is rewarding
-    the model more highly than the F1 score, this will mostly due to granularity differences 
-    between the ground truth and the model predictions. Points below the line indicate that
-    the COTe score is penalising the model for Overlap and Trespass errors, which are
-    beyond the scope of the F1 score.
+    across the NCSE test set. Each point represents a single page, with the x-axis showing
+    the F1 score at IoU 0.5 and the y-axis showing the MOTe error. As F1 is a score and MOTe
+    an error, the dashed line represents agreement between the two (MOTe = 1 − F1). Points
+    below the line indicate that MOTe is judging the model more favourably than the F1 score,
+    this will mostly be due to granularity differences between the ground truth and the model
+    predictions. Points above the line indicate that MOTe is penalising the model for
+    Overlap and Trespass errors, which are beyond the scope of the F1 score.
     """
     )
     return
@@ -568,11 +571,11 @@ def _(mo):
 def _(all_scores, plt):
     _fig, _ax = plt.subplots(figsize=(6, 6))
     for _name, _grp in all_scores.groupby("model"):
-        _ax.scatter(_grp["f1_50"], _grp["cote"], label=_name, alpha=0.75, s=45)
-    _ax.plot([0, 1], [0, 1], "k--", linewidth=1, label="y = x")
+        _ax.scatter(_grp["f1_50"], _grp["mote"], label=_name, alpha=0.75, s=45)
+    _ax.plot([0, 1], [1, 0], "k--", linewidth=1, label="MOTe = 1 − F1")
     _ax.set_xlabel("F1 @ IoU 0.5")
-    _ax.set_ylabel("COTe")
-    _ax.set_title("COTe vs F1, one point per page")
+    _ax.set_ylabel("MOTe error")
+    _ax.set_title("MOTe vs F1, one point per page")
     _ax.legend()
     _fig
     return
@@ -584,14 +587,14 @@ def _(mo):
         r"""
     ## 5. Visualise where the pixels went
 
-    While the COTe score provides a quantiative meaasure of layout quality, it can still
+    While the MOTe error provides a quantitative measure of layout quality, it can still
     be useful to visualise the errors as they appear on the page.
     This code block produce an image showing the predictions across each image in the dataset,
     this can be valuable for detailed model debugging. The colour maps is described below
 
     | colour | state | meaning |
     |---|---|---|
-    | green | coverage | GT pixels correctly predicted |
+    | green | covered | GT pixels correctly predicted |
     | amber | overlap | GT pixels claimed more than once |
     | red | trespass | prediction pulled in pixels from another SSU |
     | purple | overlap + trespass | both at once |
@@ -599,7 +602,7 @@ def _(mo):
     | blue | excess | prediction landed on background |
 
     Masks are computed on a canvas capped at 2000px on the long side, so the image is resized to
-    match before drawing. Colours are fixed in `COTE_COLORS`, so figures are directly comparable
+    match before drawing. Colours are fixed in `MOTE_COLORS`, so figures are directly comparable
     across models. Output goes to one folder per model.
     """
     )
@@ -614,13 +617,13 @@ def _(
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
     compute_canvas,
-    compute_cote_masks,
+    compute_mote_masks,
     np,
     plt,
-    visualize_cote_states,
+    visualize_mote_states,
 ):
     def render_page(sample, predictions, title, out_path=None):
-        """Render the COTe pixel-state overlay for one page."""
+        """Render the MOTe pixel-state overlay for one page."""
         with Image.open(sample["image_path"]) as _im:
             img = _im.convert("RGB")
             w, h = img.size
@@ -628,13 +631,13 @@ def _(
         canvas_w, canvas_h = compute_canvas(w, h, 2000)
         gt_map = boxes_to_gt_ssu_map(sample["annotations"], w, h, canvas_w, canvas_h)
         pred_masks = boxes_to_pred_masks(predictions, w, h, canvas_w, canvas_h)
-        masks = compute_cote_masks(gt_map, pred_masks)
+        masks = compute_mote_masks(gt_map, pred_masks)
 
         # _draw_overlays does not resize: the image must match the mask canvas.
         img_arr = np.array(img.resize((canvas_w, canvas_h)))
 
         fig, ax = plt.subplots(figsize=(9, 12))
-        patches = visualize_cote_states(img_arr, masks, ax=ax, show_missing=True)
+        patches = visualize_mote_states(img_arr, masks, ax=ax, show_missing=True)
         ax.legend(handles=patches, loc="upper right", fontsize=9, framealpha=0.9)
         ax.set_title(title)
         ax.axis("off")
@@ -648,7 +651,7 @@ def _(
         """Render every page for one model into FIG_DIR/<model_name>/."""
         out_dir = Path(FIG_DIR) / model_name
         out_dir.mkdir(parents=True, exist_ok=True)
-        by_filename = scores_df.set_index("filename")["cote"].to_dict()
+        by_filename = scores_df.set_index("filename")["mote"].to_dict()
 
         n = len(dataset) if limit is None else min(limit, len(dataset))
         figs = []
@@ -657,13 +660,13 @@ def _(
             stem = Path(sample["filename"]).stem
             title = (
                 f"{model_name} — {sample['filename']}\n"
-                f"COTe = {by_filename.get(sample['filename'], float('nan')):.3f}"
+                f"MOTe = {by_filename.get(sample['filename'], float('nan')):.3f}"
             )
             fig = render_page(
                 sample,
                 preds_by_file[sample["filename"]],
                 title,
-                out_path=out_dir / f"{stem}_cote.png",
+                out_path=out_dir / f"{stem}_mote.png",
             )
             figs.append(fig)
             plt.close(fig)
@@ -723,20 +726,20 @@ def _(mo):
 
     In `outputs/predictions/`:
 
-    - `ncse_{model}_scores.csv` — per page: `cote, coverage, overlap, trespass, excess,
+    - `ncse_{model}_scores.csv` — per page: `mote, missing, overlap, trespass, excess,
       mean_iou, f1_50` and box counts.
     - `ncse_{model}_predictions.csv` — flat box table, GT and predictions interleaved
       (`source ∈ {gt, pred}`). **Notebook 2 reads this file.**
 
-    In `outputs/figures/{model}/` — one COTe pixel-state image per page.
+    In `outputs/figures/{model}/` — one MOTe pixel-state image per page.
 
     ---
 
-    COTe has told us how well each model recovered parsed the page. It says nothing
+    MOTe has told us how well each model parsed the page. It says nothing
     about the quality of the text extraction. 
  
     Continue to **`Tutorial_2_the_CEV.py`**, which loads these predictions, runs two OCR engines,
-    and uses COTe together with SpACER to attribute the main source of error to either the 
+    and uses MOTe together with SpACER to attribute the main source of error to either the 
     parsing model or the OCR engine.
     """
     )

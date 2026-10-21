@@ -1,13 +1,15 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/JonnoB/cotescore/main/docs/cotescore_banner.png"
-       alt="cotescore" width="700">
+  <img src="https://raw.githubusercontent.com/JonnoB/pymote/main/docs/pymote_banner.png"
+       alt="pymote" width="700">
 </p>
 
 
-**Decomposable evaluation metrics for document understanding pipelines — the COTe score for layout parsing, and the Character Error Vector for page-level OCR**
+**Decomposable evaluation metrics for document understanding pipelines — the MOTe error for layout parsing, and the Character Error Vector for page-level OCR**
 
-[![PyPI version](https://img.shields.io/pypi/v/cotescore)](https://pypi.org/project/cotescore/)
+[![PyPI version](https://img.shields.io/pypi/v/pymote)](https://pypi.org/project/pymote/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
+> **pymote is the successor to [`cotescore`](https://pypi.org/project/cotescore/).** The layout metric has been reframed from the COTe score into the MOTe error; see [Coming from the COTe score?](#layout-parsing--the-mote-error) below.
 
 
 ## Overview
@@ -16,21 +18,27 @@ Document Layout Analysis (DLA) is the process of parsing a page into meaningful 
 
 Document understanding pipelines generally have two stages. The first stage parses the page into individual visual elements or regions, effectively focusing on answering **where is the text?**. The second stage is the Optical Character Recognition, where the text is transcribed in to machine readable format, answering **what does the text say?**. When the output text quality is poor conventional metrics can struggle to identify the root cause. 
 
-The **cotescore** library provides two decomposable metrics one for each stage of the pipeline.  
+The **pymote** library provides two decomposable metrics one for each stage of the pipeline.  
 
-For a conceptual introduction to these metrics there is, a blog post on the [COTe score](https://the-3tc.github.io/blog/cote-score/), a blog post on the [CEV](https://the-3tc.github.io/blog/cev-score/), and two [tutorials](https://lightning.ai/the3tc/templates/cotescore-library-tutorial) available to run for free on a lightning ai studio.
+For a conceptual introduction to these metrics there is a blog post on the [COTe score](https://the-3tc.github.io/blog/cote-score/) (the original framing that MOTe reframes as an error), a blog post on the [CEV](https://the-3tc.github.io/blog/cev-score/), and two [tutorials](https://lightning.ai/the3tc/templates/cotescore-library-tutorial) available to run for free on a lightning ai studio (written for `cotescore`).
 
-### Layout parsing — the COTe score
+### Layout parsing — the MOTe error
 
 
 - **Structural Semantic Units (SSUs)** — a relational labelling approach that shifts focus from the physical bounding boxes of regions to the semantic structure of the content.
-- **COTe Score** — a decomposable metric that breaks page-parsing quality into four interpretable components:
-  - **C**overage — how well predictions cover ground-truth regions
-  - **O**verlap — redundant predictions within the same ground-truth region
+- **MOTe error** — a decomposable error that breaks page-parsing quality into interpretable components:
+  - **M**issing — ground-truth area that no prediction covers (the complement of Coverage)
+  - **O**verlap — redundant predictions covering the same ground-truth area
   - **T**respass — predictions that cross semantic boundaries into a different SSU
-  - **e**xcess — A support metric for predictions that fall on background or white-space
+  - **e**xcess — a support metric for predictions that fall on background or white-space
 
-COTe is more informative than traditional metrics, reveals distinct model failure modes, and remains useful even when explicit SSU labels are unavailable.
+$$\mathrm{MOTe} = \mathcal{M} + \mathcal{O} + \mathcal{T}$$
+
+0 is a perfectly parsed page and 1 is a page with no predictions. Values above 1 are possible, and mean that Overlap plus Trespass outweigh the area the predictions cover. Excess is reported alongside but is not part of the sum.
+
+MOTe is more informative than traditional metrics, reveals distinct model failure modes, and remains useful even when explicit SSU labels are unavailable. Because it works on per-instance masks it also applies to instance and panoptic segmentation (where Overlap is zero by construction).
+
+> **Coming from the COTe score?** MOTe is the same decomposition reframed as an error. With default weights `MOTe = 1 − COTe` and `Missing = 1 − Coverage`, so previously computed results convert directly.
 
 ### Page-level OCR — the Character Error Vector
 
@@ -44,18 +52,18 @@ Because the components separate the stages, the CEV can say whether the transcri
 ## Installation
 
 ```bash
-pip install cotescore
+pip install pymote
 ```
 
-That is all you need to compute COTe and CEV scores on predictions you already have. Running the layout models themselves requires extra dependencies — see [Optional extras](#optional-extras--running-the-benchmark-models) at the end.
+That is all you need to compute MOTe and CEV scores on predictions you already have. Running the layout models themselves requires extra dependencies — see [Optional extras](#optional-extras--running-the-benchmark-models) at the end.
 
 ## Quick Start
 
 The library ships with a bundled limerick case study that you can use to try it out immediately.
 
 ```python
-from cotescore import cote_score, load_limerick_example, extract_ssu_boxes
-from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks, compute_canvas
+from pymote import mote, load_limerick_example, extract_ssu_boxes
+from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks, compute_canvas
 
 # Load the bundled example: ground-truth dict, document image, and example predictions
 ground_truth, image, pred_boxes = load_limerick_example()
@@ -68,40 +76,44 @@ gt_boxes = extract_ssu_boxes(ground_truth)
 gt_ssu_map = boxes_to_gt_ssu_map(gt_boxes, w, h, canvas_w, canvas_h)
 preds = boxes_to_pred_masks(pred_boxes, w, h, canvas_w, canvas_h)
 
-# Compute the COTe score
-cote, C, O, T, E = cote_score(gt_ssu_map, preds)
-print(f"COTe={cote:.3f}  C={C:.3f}  O={O:.3f}  T={T:.3f}  E={E:.3f}")
+# Compute the MOTe error; the result is a named tuple
+result = mote(gt_ssu_map, preds)
+print(f"MOTe={result.mote:.3f}  M={result.missing:.3f}  O={result.overlap:.3f}  "
+      f"T={result.trespass:.3f}  e={result.excess:.3f}")
 ```
 ---
 
-![COTe pixel-state visualisation showing Coverage, Overlap, Trespass and Excess regions](docs/example_cote_components.png)
+![MOTe pixel-state visualisation showing Covered, Missing, Overlap, Trespass and Excess regions](docs/example_mote_components.png)
 
-*COTe pixel-state visualisation: each pixel in the document is classified as Coverage (green), Overlap (yellow), Trespass (red), Trespass AND Overlap (purple), or Excess (blue). Produced by `notebooks/limerick_analysis.py`.*
+*MOTe pixel-state visualisation: each pixel in the document is classified as Covered (green), Overlap (yellow), Trespass (red), Trespass AND Overlap (purple), Missing (grey), or Excess (blue). Produced by `notebooks/limerick_analysis.py`.*
 
 ---
 
-See [`notebooks/limerick_analysis.py`](notebooks/limerick_analysis.py) for a full worked example comparing COTe against F1 and mean IoU at different granularity levels.
+See [`notebooks/limerick_analysis.py`](notebooks/limerick_analysis.py) for a full worked example comparing MOTe against F1 and mean IoU at different granularity levels.
 
-## Core Metrics — COTe
+## Core Metrics — MOTe
 
 | Function | Description |
 |---|---|
-| `cote_score(gt_ssu_map, preds)` | Returns `(cote, C, O, T, E)` — the full decomposition |
-| `coverage(gt_ssu_map, preds)` | Fraction of GT area correctly covered `[0, 1]` |
+| `mote(gt_ssu_map, preds)` | Returns a `MOTeResult` named tuple `(mote, missing, overlap, trespass, excess)` `[0, ∞)` |
+| `missing(gt_ssu_map, preds)` | Fraction of GT area no prediction covers `[0, 1]` |
+| `coverage(gt_ssu_map, preds)` | Fraction of GT area covered, `1 − missing` `[0, 1]` |
 | `overlap(gt_ssu_map, preds)` | Redundant prediction area within GT `[0, ∞)` |
-| `trespass(gt_ssu_map, preds)` | GT area covered by wrong-SSU predictions `[0, ∞]` |
+| `trespass(gt_ssu_map, preds)` | GT area covered by predictions assigned to a different SSU `[0, ∞)` |
 | `excess(gt_ssu_map, preds)` | Predicted area falling on background, over total background `[0, 1]` |
-| `cote_class(gt_ssu_map, ssu_to_class, preds)` | Per-class interaction matrices (`ClassCOTeResult`) |
+| `mote_class(gt_ssu_map, ssu_to_class, preds)` | Per-class interaction matrices and per-GT-class Missing (`ClassMOTeResult`) |
 
-All functions are importable directly from `cotescore`:
+All functions are importable directly from `pymote`:
 
 ```python
-from cotescore import cote_score, coverage, overlap, trespass, excess, cote_class
+from pymote import mote, missing, coverage, overlap, trespass, excess, mote_class
 ```
 
-The conventional instance-matching baselines COTe is compared against in the paper — `iou`, `mean_iou` and `f1` — remain available from `cotescore.layout` if you want to reproduce those comparisons.
+`mote` accepts `weight_missing`, `weight_overlap` and `weight_trespass` to reweight the sum; equal weights are the default because each component measures the same spatial area. When ground truth is available as boxes, pass a `GTBoxes` and an `(M, 4)` array of predicted boxes to `mote` to use the analytic fast path, which never rasterises. A page with no SSUs has Missing, Overlap and Trespass of 0.
 
-For an alternative visual overview of the what the different elements of the COTe score mean please see [`notebooks/metrics_exploration.py`](notebooks/metrics_exploration.py)
+The conventional instance-matching baselines MOTe is compared against in the paper — `iou`, `mean_iou` and `f1` — remain available from `pymote.layout` if you want to reproduce those comparisons.
+
+For an alternative visual overview of what the different elements of the MOTe error mean please see [`notebooks/metrics_exploration.py`](notebooks/metrics_exploration.py)
 
 ## Core Metrics — the CEV
 
@@ -128,7 +140,7 @@ From those come the four components — `d_pars` (parsing alone), `d_ocr` (OCR g
 | `text_to_counter(text, mode)` | Build a character (or word, for SpAWER) frequency Counter |
 
 ```python
-from cotescore import spacer_decomp, cdd_decomp
+from pymote import spacer_decomp, cdd_decomp
 
 bags = {"gt": gt_text, "ocr": ocr_of_gt_regions, "total": ocr_of_predicted_regions}
 sp = spacer_decomp(bags)
@@ -136,18 +148,18 @@ cd = cdd_decomp(bags)
 print(sp.d_ocr_macro, sp.d_total_macro)
 ```
 
-Components whose inputs are absent come back as `None` rather than failing. Building $R$ needs character-level positions, so a dataset with only region-level text yields `d_ocr` and `d_total` while `d_pars` and `d_int` are `None`. That pair is still enough to triage: combining COTe with the ratio `d_ocr / d_total` predicts the dominant error source with an F1 of 0.91, using only values that are cheap to obtain. The `*_spatial` functions recover the full vector when character boxes are available.
+Components whose inputs are absent come back as `None` rather than failing. Building $R$ needs character-level positions, so a dataset with only region-level text yields `d_ocr` and `d_total` while `d_pars` and `d_int` are `None`. That pair is still enough to triage: combining MOTe with the ratio `d_ocr / d_total` predicts the dominant error source with an F1 of 0.91, using only values that are cheap to obtain. The `*_spatial` functions recover the full vector when character boxes are available.
 
 ## Visualisation
 
 ```python
-from cotescore import compute_cote_masks, visualize_cote_states
+from pymote import compute_mote_masks, visualize_mote_states
 import matplotlib.pyplot as plt
 
-masks = compute_cote_masks(gt_ssu_map, preds)
+masks = compute_mote_masks(gt_ssu_map, preds)
 
 fig, ax = plt.subplots()
-visualize_cote_states(image, masks, ax=ax)
+visualize_mote_states(image, masks, ax=ax)
 plt.show()
 ```
 
@@ -156,13 +168,13 @@ plt.show()
 The library includes loaders for the datasets used in the two papers, all sharing one annotation format:
 
 ```python
-from cotescore.dataset import (
+from pymote.dataset import (
     NCSEDataset, DocLayNetDataset, HNLA2013Dataset,
     SpiritualistDataset, HierTextDataset, DocBankDataset,
 )
 
 # Bundled toy example (no download required)
-from cotescore import load_limerick_example
+from pymote import load_limerick_example
 chars_df, image, pred_boxes = load_limerick_example()
 ```
 
@@ -171,9 +183,9 @@ chars_df, image, pred_boxes = load_limerick_example()
 The primary interactive example is the Marimo notebook at [`notebooks/limerick_analysis.py`](notebooks/limerick_analysis.py). It demonstrates:
 
 - Visualising SSU, line, and character-level bounding boxes
-- The granularity-mismatch problem and how COTe handles it
-- Side-by-side comparison of COTe, F1, and mean IoU
-- COTe pixel-state visualisation
+- The granularity-mismatch problem and how MOTe handles it
+- Side-by-side comparison of MOTe, F1, and mean IoU
+- MOTe pixel-state visualisation
 
 To run the notebook (requires [Marimo](https://marimo.io)):
 
@@ -184,21 +196,21 @@ marimo edit notebooks/limerick_analysis.py
 
 ### End-to-end walkthrough on a real dataset
 
-There are two tutorial notebooks, covering COTe and CEV that provide hands on experience of the metrics. The tutorials use the `marimo` library, the NCSEv2 test set and require a GPU. A 1-click reproducible lightning.ai studio is available to run for free [here](https://lightning.ai/the3tc/templates/cotescore-library-tutorial)
+There are two tutorial notebooks, covering MOTe and CEV that provide hands on experience of the metrics. The tutorials use the `marimo` library, the NCSEv2 test set and require a GPU. A 1-click reproducible lightning.ai studio is available to run for free [here](https://lightning.ai/the3tc/templates/cotescore-library-tutorial)
 
-1. [`notebooks/Tutorial_1_the_COTe.py`](notebooks/Tutorial_1_the_COTe.py) — scores two layout
-   models (DocLayout-YOLO and Docling Heron) with COTe, compares it against F1 and mean IoU,
-   and writes a folder of COTe pixel-state diagnostics per model.
+1. [`notebooks/Tutorial_1_the_MOTe.py`](notebooks/Tutorial_1_the_MOTe.py) — scores two layout
+   models (DocLayout-YOLO and Docling Heron) with MOTe, compares it against F1 and mean IoU,
+   and writes a folder of MOTe pixel-state diagnostics per model.
 2. [`notebooks/Tutorial_2_the_CEV.py`](notebooks/Tutorial_2_the_CEV.py) — runs EasyOCR and
    Tesseract over both models' regions and scores them with the CEV (SpACER and CDD), then uses
-   COTe together with `d_ocr / d_total` to attribute each page's error to parsing or to OCR.
+   MOTe together with `d_ocr / d_total` to attribute each page's error to parsing or to OCR.
 
 Both notebooks take the images folder and the ground-truth CSV as plain string paths at the top,
 so they can be pointed at your own dataset. The layout models need a GPU and the
 `doclayout-yolo`, `easyocr` and `pytesseract` packages (plus the `tesseract` binary).
 
 ```bash
-marimo edit notebooks/Tutorial_1_the_COTe.py
+marimo edit notebooks/Tutorial_1_the_MOTe.py
 marimo edit notebooks/Tutorial_2_the_CEV.py
 ```
 
@@ -210,29 +222,29 @@ The benchmarking extras include either PyTorch or PaddlePaddle — **do not inst
 
 | Extra | Use case | GPU framework |
 |---|---|---|
-| `cotescore[benchmarks]` | Torch-based DLA models (DocLayout-YOLO, Heron) | PyTorch |
-| `cotescore[paddle-benchmark]` | PaddleOCR / PP-DocLayout | PaddlePaddle |
+| `pymote[benchmarks]` | Torch-based DLA models (DocLayout-YOLO, Heron) | PyTorch |
+| `pymote[paddle-benchmark]` | PaddleOCR / PP-DocLayout | PaddlePaddle |
 
 ```bash
 # Torch-based benchmarks
-pip install "cotescore[benchmarks]"
+pip install "pymote[benchmarks]"
 
 # PaddlePaddle benchmarks (install PaddlePaddle first, separately)
 # See: https://www.paddlepaddle.org.cn/install/quick
-pip install "cotescore[paddle-benchmark]"
+pip install "pymote[paddle-benchmark]"
 ```
 
-> **Note:** PaddlePaddle must be installed before `cotescore[paddle-benchmark]` — it is not listed as a pip dependency because the correct wheel depends on your CUDA version. Follow the [PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/install/quick) to get the right version.
+> **Note:** PaddlePaddle must be installed before `pymote[paddle-benchmark]` — it is not listed as a pip dependency because the correct wheel depends on your CUDA version. Follow the [PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/install/quick) to get the right version.
 
 ## Questions and Bug Reports
 
-If you have questions, find a bug, or want to request a feature, please [open an issue](https://github.com/JonnoB/cot_analysis/issues) on GitHub.
+If you have questions, find a bug, or want to request a feature, please [open an issue](https://github.com/JonnoB/pymote/issues) on GitHub.
 
 ## Citation
 
-If you use cotescore in your research, please cite the paper for the metric you used.
+If you use pymote in your research, please cite the paper for the metric you used.
 
-**COTe** — layout parsing:
+**MOTe** — layout parsing. MOTe reframes the COTe score from this paper as an error (`MOTe = 1 − COTe`); until the MOTe paper is out, please cite:
 
 Bourne, Jonathan, Mwiza Simbeye, and Ishtar Govia. “The COTe Score: A Decomposable Framework for Evaluating Document Layout Analysis Models.” arXiv:2603.12718. Preprint, arXiv, March 13, 2026. https://doi.org/10.48550/arXiv.2603.12718.
 

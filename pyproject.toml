@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cotescore"
-version = "0.3.0"
-description = "Coverage and Overlap, Trespass and Excess (COTe) Testing for Document Layout Analysis"
+name = "pymote"
+version = "0.1.0"
+description = "MOTe error (Missing, Overlap, Trespass, and Excess) for Document Layout Analysis, and the Character Error Vector for page-level OCR"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
@@ -90,14 +90,14 @@ paddle-benchmark = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JonnoB/cot_analysis"
-Repository = "https://github.com/JonnoB/cot_analysis"
+Homepage = "https://github.com/JonnoB/pymote"
+Repository = "https://github.com/JonnoB/pymote"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-cotescore = ["assets/**/*"]
+pymote = ["assets/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

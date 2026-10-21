@@ -1,14 +1,36 @@
-"""Shared type definitions used across the cot_score package."""
+"""Shared type definitions used across the pymote package."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, NamedTuple, Optional, Union
 
 import numpy as np
 
 
 Label = Union[str, int]
+
+
+class MOTeResult(NamedTuple):
+    """Result of :func:`~pymote.layout.mote`.
+
+    A ``NamedTuple``, so it unpacks positionally
+    (``mote, M, O, T, E = mote(...)``) as well as by attribute.
+
+    Attributes:
+        mote: Weighted MOTe error ``w_M*M + w_O*O + w_T*T``. 0 is a perfect
+            parse, 1 means no predictions; values above 1 are possible.
+        missing: Missing ``M = 1 - Coverage``, in ``[0, 1]``.
+        overlap: Overlap ``O``, in ``[0, inf)``.
+        trespass: Trespass ``T``, in ``[0, inf)``.
+        excess: Support metric Excess ``e``, in ``[0, 1]``; not part of ``mote``.
+    """
+
+    mote: float
+    missing: float
+    overlap: float
+    trespass: float
+    excess: float
 
 
 @dataclass(frozen=True)
@@ -106,9 +128,9 @@ class RegionPixels:
 
 @dataclass(frozen=True)
 class GTBoxes:
-    """Ground-truth SSU boxes for the analytic bounding-box COTe fast path.
+    """Ground-truth SSU boxes for the analytic bounding-box MOTe fast path.
 
-    Used as the ``gt`` argument to :func:`~cotescore.layout.cote_score` when
+    Used as the ``gt`` argument to :func:`~pymote.layout.mote` when
     ground truth is available as boxes rather than a rasterized pixel map.
     Bundles image extent alongside the boxes because ``excess``'s
     background-area denominator needs it, and pure box coordinates carry no
@@ -209,14 +231,15 @@ class SpACERDecomposition:
 
 
 @dataclass
-class ClassCOTeResult:
-    """Results of the class-level COTe decomposition.
+class ClassMOTeResult:
+    """Results of the class-level MOTe decomposition.
 
     ``classes`` defines the ordering of rows and columns in all matrices
     and the ordering of entries in all share vectors.
 
     Matrices are indexed [k, l] where k is the prediction class index and
-    l is the ground-truth class index.
+    l is the ground-truth class index. Missing has no prediction class, so
+    ``missing_share`` and ``missing_rate`` are indexed by GT class l.
     """
 
     classes: List[Label]
@@ -226,6 +249,8 @@ class ClassCOTeResult:
     coverage_share: np.ndarray  # K    fraction of total coverage attributable to class k
     overlap_share: np.ndarray  # K    fraction of total overlap attributable to class k
     trespass_share: np.ndarray  # K    fraction of total trespass attributable to class k
+    missing_share: np.ndarray  # K    fraction of total missing GT area belonging to GT class l
+    missing_rate: np.ndarray  # K    per-class Missing: uncovered class-l GT area / A^S_l
     coverage_precision: np.ndarray  # K  TP_k / A^P_k — background included, unlike coverage_matrix
     coverage_recall: np.ndarray  # K  TP_k / A^S_k — GT-area-normalised, not in coverage_matrix
     coverage_f1: np.ndarray  # K  harmonic mean of coverage_precision and coverage_recall
@@ -235,11 +260,11 @@ class ClassCOTeResult:
 
 
 @dataclass(frozen=True)
-class ClassCOTeCounts:
+class ClassMOTeCounts:
     """Raw, unnormalised per-class pixel sums for one image (or an accumulation
-    of several images via :func:`~cotescore.class_metrics.sum_class_counts`).
+    of several images via :func:`~pymote.class_metrics.sum_class_counts`).
 
-    Unlike :class:`ClassCOTeResult`, these are summable across images. The
+    Unlike :class:`ClassMOTeResult`, these are summable across images. The
     share vectors are *not* row-sums of the K×K numerators. Coverage and
     overlap shares split each pixel between classes pro rata (weight
     M^p_k / M^p), so that a pixel claimed by predictions of two classes is
@@ -251,7 +276,7 @@ class ClassCOTeCounts:
     are tracked as independent accumulable quantities.
 
     Pass the accumulated totals to
-    :func:`~cotescore.class_metrics.finalize_class_counts` to get the final
+    :func:`~pymote.class_metrics.finalize_class_counts` to get the final
     matrices, shares, and precision/recall/F1.
 
     ``classes`` must be identical (same list, same order) across every
@@ -269,6 +294,7 @@ class ClassCOTeCounts:
     coverage_share_numer: np.ndarray  # K  sum(M^S & M^p,b * M^p_k / M^p) — pro-rata coverage
     overlap_share_numer: np.ndarray  # K  sum(M^S * (M^p − M^p,b) * M^p_k / M^p) — pro-rata overlap
     trespass_share_numer: np.ndarray  # K  sum_{j in k} sum(M^S_{\\i(j)} & M^p_j)
+    missing_numer: np.ndarray  # K  sum(M^S_l & ~M^p,b_global) — class-l GT area no prediction covers
     global_coverage_area: int  # sum(M^S & M^p,b_global) — union across all classes
     global_overlap_area: int  # sum(M^S & (M^p_global − M^p,b_global))
     global_trespass_pixels: int  # total trespass pixels across all classes

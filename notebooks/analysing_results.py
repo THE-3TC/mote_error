@@ -85,7 +85,35 @@ def _(Path):
 
 
 @app.cell
-def _(json, np, pd, ppdoc_results_folder, torch_results_folder):
+def _():
+    def harmonise_mote_columns(df):
+        """Fill in MOTe columns for results saved before the MOTe reformulation, and the
+        old COTe columns for results saved after it, so either vintage loads the same.
+
+        With unit weights MOTe = 1 - COTe and Missing = 1 - Coverage exactly.
+        """
+        if "mote" not in df and "cot_score" in df:
+            df["mote"] = 1 - df["cot_score"]
+        if "cot_score" not in df and "mote" in df:
+            df["cot_score"] = 1 - df["mote"]
+        if "missing" not in df and "coverage" in df:
+            df["missing"] = 1 - df["coverage"]
+        if "coverage" not in df and "missing" in df:
+            df["coverage"] = 1 - df["missing"]
+        return df
+
+    return (harmonise_mote_columns,)
+
+
+@app.cell
+def _(
+    harmonise_mote_columns,
+    json,
+    np,
+    pd,
+    ppdoc_results_folder,
+    torch_results_folder,
+):
 
     def create_results_table(filename):
         MODEL_NAME_MAP = {
@@ -105,7 +133,7 @@ def _(json, np, pd, ppdoc_results_folder, torch_results_folder):
                 _data = json.load(f)
             _df = pd.DataFrame.from_dict(_data["models"], orient="index")
             out_df.append(_df)
-        out_df = pd.concat(out_df, ignore_index=False)
+        out_df = harmonise_mote_columns(pd.concat(out_df, ignore_index=False))
         out_df = out_df.loc[
             :, [
                 "cot_score",
@@ -500,7 +528,7 @@ def _(
 
 
 @app.cell
-def _(Path, json, pd):
+def _(Path, harmonise_mote_columns, json, pd):
 
     def load_results_to_dataframe(base_path: str) -> pd.DataFrame:
         """
@@ -513,8 +541,8 @@ def _(Path, json, pd):
             base_path: Path to directory containing JSON result files
 
         Returns:
-            DataFrame with columns: model, filename, mean_iou, coverage,
-            overlap, trespass, excess, cot_score
+            DataFrame with columns: model, filename, mean_iou, coverage, missing,
+            overlap, trespass, excess, cot_score, mote
         """
         records = []
         path = Path(base_path)
@@ -535,7 +563,7 @@ def _(Path, json, pd):
                 }
                 records.append(record)
 
-        return pd.DataFrame(records)
+        return harmonise_mote_columns(pd.DataFrame(records))
     return (load_results_to_dataframe,)
 
 
@@ -667,7 +695,7 @@ def _(Path, pd):
         """
         if cache_path.exists():
             return pd.read_csv(cache_path)
-        from cotescore.map_metric import MAPMetric
+        from pymote.map_metric import MAPMetric
 
         csv_model_names = {
             "DocLayout-YOLO": "YOLO",

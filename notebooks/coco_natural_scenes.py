@@ -13,9 +13,9 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # COTe on natural scenes
+    # MOTe on natural scenes
 
-    Although COTe was developed for document understanding pipelines, there is nothing that prevents it being used in general machine vision tasks. In this notebook we compare the performance of COTe to Panoptic Quality (PQ), on two images from COCO panoptic. We apply two models YOLO26-instance and Mask2Former panoptic. In Panoptic segmentation each pixel can only have a single class, meaning that Overlap will become zero, in instance segmentation, Overlap is likely low but will still be present.
+    Although MOTe was developed for document understanding pipelines, there is nothing that prevents it being used in general machine vision tasks. In this notebook we compare the performance of MOTe to Panoptic Quality (PQ), on two images from COCO panoptic. We apply two models YOLO26-instance and Mask2Former panoptic. In Panoptic segmentation each pixel can only have a single class, meaning that Overlap will become zero, in instance segmentation, Overlap is likely low but will still be present.
 
     **Panoptic Quality (PQ)**, the standard metric for this task.
 
@@ -28,11 +28,11 @@ def _(mo):
     $$\text{PQ} = \text{SQ} \times \text{RQ}$$
 
     PQ is an instance-matching metric, so it inherits F1's sensitivity to granularity. It also
-    requires non-overlapping predictions, so it cannot say anything about overlap. COTe is
+    requires non-overlapping predictions, so it cannot say anything about overlap. MOTe is
     computed over pixels and has neither restriction.
 
 
-    This notebook is a simple demonstration of COTe on natural scenes deeper analysis is beyond it's scope/
+    This notebook is a simple demonstration of MOTe on natural scenes deeper analysis is beyond it's scope/
     """)
     return
 
@@ -77,24 +77,24 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from cotescore.class_metrics import class_confusion_counts, finalize_class_counts
-    from cotescore.layout import cote_score
-    from cotescore.types import MaskInstance
-    from cotescore.visualisation import compute_cote_masks, visualize_cote_states
+    from pymote.class_metrics import class_confusion_counts, finalize_class_counts
+    from pymote.layout import mote
+    from pymote.types import MaskInstance
+    from pymote.visualisation import compute_mote_masks, visualize_mote_states
     return (
         Image,
         MaskInstance,
         Path,
         class_confusion_counts,
-        compute_cote_masks,
-        cote_score,
+        compute_mote_masks,
+        mote,
         defaultdict,
         finalize_class_counts,
         json,
         np,
         pd,
         plt,
-        visualize_cote_states,
+        visualize_mote_states,
     )
 
 
@@ -455,7 +455,7 @@ def _(
     MaskInstance,
     categories,
     class_confusion_counts,
-    cote_score,
+    mote,
     finalize_class_counts,
     gt_segments,
     np,
@@ -466,8 +466,8 @@ def _(
 ):
     SCOPES = ("all", "things")
 
-    def cote_f1(gt_map, gt, preds):
-        """Class-aware COTe F1: micro F1 of per-class pixel coverage precision and recall.
+    def mote_f1(gt_map, gt, preds):
+        """Class-aware MOTe F1: micro F1 of per-class pixel coverage precision and recall.
 
         The class list is the union of GT and predicted classes, so pixels predicted as a
         class absent from the GT count against precision rather than being dropped.
@@ -505,7 +505,7 @@ def _(
                     _masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(_p)]
                     if not _masks:
                         _masks = [MaskInstance(mask=np.zeros_like(_void), pred_id=0)]
-                    _cote, _c, _o, _t, _e = cote_score(_gt_map, _masks)
+                    _mote, _m, _o, _t, _e = mote(_gt_map, _masks)
                     _pq, _sq, _rq = panoptic_quality(_gt, _p, _void)
                     _rows.append(
                         {
@@ -514,12 +514,12 @@ def _(
                             "image_id": _id,
                             "gt_variant": _variant,
                             "scope": _scope,
-                            "cote": _cote,
-                            "coverage": _c,
+                            "mote": _mote,
+                            "missing": _m,
                             "overlap": _o,
                             "trespass": _t,
                             "excess": _e,
-                            "cote_f1": cote_f1(_gt_map, _gt, _p),
+                            "mote_f1": mote_f1(_gt_map, _gt, _p),
                             "pq": _pq,
                             "sq": _sq,
                             "rq": _rq,
@@ -541,12 +541,12 @@ def _(mo):
     is fair to both models.
 
     - **Mask2Former** predicts one mask per train. Each mask sits inside a single SSU under
-      either ground truth, so COTe does not change: predicting finer units than the ground
+      either ground truth, so MOTe does not change: predicting finer units than the ground
       truth costs nothing. PQ does change, because the one-to-one match fails against the
       single COCO segment.
     - **YOLO26** predicts one mask per train plus a low-confidence mask covering both. That
       mask is overlap under either ground truth. Under `split` it also crosses from one train
-      into the other, so COTe adds trespass. PQ never sees this mask: making the predictions
+      into the other, so MOTe adds trespass. PQ never sees this mask: making the predictions
       non-overlapping removes it before matching, so PQ *rises* under `split`.
     """)
     return
@@ -555,7 +555,7 @@ def _(mo):
 @app.cell
 def _(SPLIT_SEGMENTS, scores_df):
     _cols = [
-        "cote", "coverage", "overlap", "trespass", "cote_f1", "pq", "sq", "rq", "n_gt", "n_pred"
+        "mote", "missing", "overlap", "trespass", "mote_f1", "pq", "sq", "rq", "n_gt", "n_pred"
     ]
     variant_df = (
         scores_df[scores_df.image_id.isin(SPLIT_SEGMENTS) & (scores_df.scope == "things")]
@@ -570,11 +570,12 @@ def _(SPLIT_SEGMENTS, scores_df):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### COTe against PQ
+    ### MOTe against PQ
 
-    One point per image. Points above the dashed line are cases where COTe rates the
-    prediction more highly than PQ, typically a granularity disagreement. Points below it are
-    cases where COTe is penalising overlap or trespass that PQ cannot see.
+    One point per image. As PQ is a score and MOTe an error, the dashed line marks agreement
+    (MOTe = 1 − PQ). Points below the dashed line are cases where MOTe rates the prediction
+    more favourably than PQ, typically a granularity disagreement. Points above it are cases
+    where MOTe is penalising overlap or trespass that PQ cannot see.
     """)
     return
 
@@ -600,7 +601,7 @@ def _(gt_picker, plt, scope_picker, scores_df):
         for _image, _grp in _df[_df.model == _model].groupby("image"):
             _ax.scatter(
                 _grp.pq,
-                _grp.cote,
+                _grp.mote,
                 color=_cmap(_i % 10),
                 marker=_markers[_image],
                 s=70,
@@ -610,11 +611,11 @@ def _(gt_picker, plt, scope_picker, scores_df):
             )
     for _image, _mk in _markers.items():
         _ax.scatter([], [], marker=_mk, color="grey", label=_image)
-    #_ax.plot([0, 1], [0, 1], "k--", linewidth=1)
+    #_ax.plot([0, 1], [1, 0], "k--", linewidth=1)
     #_ax.set_xlim(-0.05, 1.05)
     _ax.set_xlabel("PQ")
-    _ax.set_ylabel("COTe")
-    _ax.set_title(f"COTe vs PQ, scope = {scope_picker.value}, GT = {gt_picker.value}")
+    _ax.set_ylabel("MOTe error")
+    _ax.set_title(f"MOTe vs PQ, scope = {scope_picker.value}, GT = {gt_picker.value}")
     _ax.grid(alpha=0.3)
     _ax.legend(fontsize=8, loc="lower right")
     _fig
@@ -628,11 +629,11 @@ def _(mo):
 
     Pick a model, an image and a scope. The left panel shows the ground truth at that scope,
     the middle panel shows the predictions coloured by class, and the right panel shows the
-    COTe pixel states:
+    MOTe pixel states:
 
     | colour | state |
     |---|---|
-    | green | coverage |
+    | green | covered |
     | amber | overlap |
     | red | trespass |
     | purple | overlap + trespass |
@@ -647,11 +648,11 @@ def _(
     MaskInstance,
     cat_colour,
     cat_name,
-    compute_cote_masks,
+    compute_mote_masks,
     label_segments,
     np,
     overlay_masks,
-    visualize_cote_states,
+    visualize_mote_states,
 ):
     def draw_segments(ax, sample, segs):
         """Segments over the image, coloured and labelled by category."""
@@ -660,17 +661,17 @@ def _(
         label_segments(ax, masks, [cat_name(g["category_id"]) for g in segs])
         ax.axis("off")
 
-    def draw_cote(ax, sample, gt_map, preds):
-        """COTe pixel states over the image, with a legend."""
+    def draw_mote(ax, sample, gt_map, preds):
+        """MOTe pixel states over the image, with a legend."""
         masks = [MaskInstance(mask=p["mask"], pred_id=i) for i, p in enumerate(preds)] or [
             MaskInstance(mask=np.zeros(gt_map.shape, dtype=bool), pred_id=0)
         ]
-        patches = visualize_cote_states(
-            sample["image"], compute_cote_masks(gt_map, masks), ax=ax, show_missing=True
+        patches = visualize_mote_states(
+            sample["image"], compute_mote_masks(gt_map, masks), ax=ax, show_missing=True
         )
         ax.legend(handles=patches, loc="upper right", fontsize=8, framealpha=0.9)
         ax.axis("off")
-    return draw_cote, draw_segments
+    return draw_mote, draw_segments
 
 
 @app.cell
@@ -693,7 +694,7 @@ def _(GT_VARIANTS, MODEL_NAMES, SCOPES, mo, predictions, samples):
 
 @app.cell
 def _(
-    draw_cote,
+    draw_mote,
     draw_segments,
     image_picker,
     model_picker,
@@ -718,14 +719,14 @@ def _(
         & (scores_df.gt_variant == _variant)
     ].iloc[0]
 
-    _fig, (_ax_gt, _ax_pred, _ax_cote) = plt.subplots(1, 3, figsize=(20, 9))
+    _fig, (_ax_gt, _ax_pred, _ax_mote) = plt.subplots(1, 3, figsize=(20, 9))
     draw_segments(_ax_gt, _s, _gt)
     _ax_gt.set_title(f"GT ({_variant}, {_scope}): {len(_gt)} segments")
     draw_segments(_ax_pred, _s, _p)
     _ax_pred.set_title(f"{_model}: {len(_p)} segments")
-    draw_cote(_ax_cote, _s, _gt_map, _p)
-    _ax_cote.set_title(
-        f"COTe {_row.cote:.3f} (C {_row.coverage:.2f}, O {_row.overlap:.2f}, "
+    draw_mote(_ax_mote, _s, _gt_map, _p)
+    _ax_mote.set_title(
+        f"MOTe {_row.mote:.3f} (M {_row.missing:.2f}, O {_row.overlap:.2f}, "
         f"T {_row.trespass:.2f}, E {_row.excess:.2f})\n"
         f"PQ {_row.pq:.3f} (SQ {_row.sq:.2f}, RQ {_row.rq:.2f})"
     )
@@ -740,7 +741,7 @@ def _(mo):
     ## 5. Tables and figures for the paper
 
     One LaTeX table per image, and one untitled figure each for the ground truth, each
-    model's predictions and each model's COTe pixel states. Both use the published COCO ground truth
+    model's predictions and each model's MOTe pixel states. Both use the published COCO ground truth
     (not the `split` version) at `PAPER_SCOPE`.
 
     Toggle on to write them to `data/figures/coco_natural_scenes/`, figures at 300 dpi. Off
@@ -797,12 +798,12 @@ def _(MODEL_NAMES, PAPER_SCOPE, mo, save_text, scores_df):
     import latex_tables as _lt
 
     _cols = {
-        "cote": "COTe",
-        "coverage": "Coverage",
+        "mote": "MOTe",
+        "missing": "Missing",
         "overlap": "Overlap",
         "trespass": "Trespass",
         "excess": "Excess",
-        "cote_f1": "COTe F1",
+        "mote_f1": "MOTe F1",
         "pq": "PQ",
         "sq": "SQ",
         "rq": "RQ",
@@ -816,14 +817,14 @@ def _(MODEL_NAMES, PAPER_SCOPE, mo, save_text, scores_df):
             .astype(float)
             .rename(columns=_cols)
             .rename_axis("Model"),
-            lower_cols=["Overlap", "Trespass", "Excess"],
+            lower_cols=["MOTe", "Missing", "Overlap", "Trespass", "Excess"],
             fmt="{:.2f}",
         )
         _table = _lt.latex_table(
             _body,
             caption=(
-                f"COTe and panoptic quality on the COCO {_image.lower()} image "
-                f"({PAPER_SCOPE} scope). Overlap, trespass and excess are lower-is-better."
+                f"MOTe and panoptic quality on the COCO {_image.lower()} image "
+                f"({PAPER_SCOPE} scope). MOTe, missing, overlap, trespass and excess are lower-is-better."
             ),
             label=f"tab:coco_{_image.lower()}",
             echo=False,
@@ -839,7 +840,7 @@ def _(MODEL_NAMES, PAPER_SCOPE, mo, save_text, scores_df):
 def _(
     MODEL_NAMES,
     PAPER_SCOPE,
-    draw_cote,
+    draw_mote,
     draw_segments,
     mo,
     plt,
@@ -874,8 +875,8 @@ def _(
             _row.append(_fig)
 
             _fig, _ax = _single(_s)
-            draw_cote(_ax, _s, _gt_map, _p)
-            save_figure(_fig, f"cote_{_stem}_{_model}")
+            draw_mote(_ax, _s, _gt_map, _p)
+            save_figure(_fig, f"mote_{_stem}_{_model}")
             _row.append(_fig)
 
         _rows.append(mo.hstack(_row, justify="start"))

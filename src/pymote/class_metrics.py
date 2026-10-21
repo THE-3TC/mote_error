@@ -1,9 +1,9 @@
-"""Class-level COTe metrics.
+"""Class-level MOTe metrics.
 
-This module implements the multi-class extension of the COTe decomposition,
+This module implements the multi-class extension of the MOTe decomposition,
 producing K×K interaction matrices and K-vector class-share quantities.
 
-The scalar (class-agnostic) COTe metrics live in ``metrics.py``.
+The scalar (class-agnostic) MOTe metrics live in ``layout.py``.
 
 Notation (following the formulation):
   M^S_l          — binary GT mask for class l
@@ -54,6 +54,16 @@ Class shares (K-vectors summing to 1):
 
   Trespass needs no weighting: the scalar T is itself a sum over
   predictions, each of which has exactly one class.
+
+Missing by GT class (K-vectors):
+  Missing has no prediction class, so it is attributed to the GT class of the
+  uncovered pixel instead.
+
+  M_share[l] = sum(M^S_l & ~M^p,b) / sum_l' sum(M^S_l' & ~M^p,b)
+  M_rate[l]  = sum(M^S_l & ~M^p,b) / A^S_l
+
+  M_share sums to 1 over the taxonomy; M_rate is the per-class Missing and
+  equals the scalar Missing when there is a single class.
 """
 
 from __future__ import annotations
@@ -62,12 +72,12 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from cotescore._core import (
+from pymote._core import (
     _check_gt_map,
     _ms_mask,
     _owner_ssu_id,
 )
-from cotescore.types import ClassCOTeCounts, ClassCOTeResult, Label, MaskInstance
+from pymote.types import ClassMOTeCounts, ClassMOTeResult, Label, MaskInstance
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +89,7 @@ def _validate_preds_have_labels(preds: Sequence[MaskInstance]) -> None:
     """Ensure every prediction carries a class label.
 
     Args:
-        preds: Sequence of :class:`~cot_score.types.MaskInstance` predictions.
+        preds: Sequence of :class:`~pymote.types.MaskInstance` predictions.
 
     Raises:
         ValueError: If any prediction has ``label=None``.
@@ -230,7 +240,7 @@ def coverage_matrix(
         (matrix, classes) where matrix is K×K float64 and classes is the
         ordered list of class labels defining row/column meaning.
     """
-    result = cote_class(gt_ssu_map, ssu_to_class, preds)
+    result = mote_class(gt_ssu_map, ssu_to_class, preds)
     return result.coverage_matrix, result.classes
 
 
@@ -260,7 +270,7 @@ def overlap_matrix(
         (matrix, classes) where matrix is K×K float64 and classes is the
         ordered list of class labels defining row/column meaning.
     """
-    result = cote_class(gt_ssu_map, ssu_to_class, preds)
+    result = mote_class(gt_ssu_map, ssu_to_class, preds)
     return result.overlap_matrix, result.classes
 
 
@@ -288,7 +298,7 @@ def trespass_matrix(
         (matrix, classes) where matrix is K×K float64 and classes is the
         ordered list of class labels defining row/column meaning.
     """
-    result = cote_class(gt_ssu_map, ssu_to_class, preds)
+    result = mote_class(gt_ssu_map, ssu_to_class, preds)
     return result.trespass_matrix, result.classes
 
 
@@ -297,15 +307,16 @@ def trespass_matrix(
 # ---------------------------------------------------------------------------
 
 
-def cote_class(
+def mote_class(
     gt_ssu_map: np.ndarray,
     ssu_to_class: Dict[int, Label],
     preds: Sequence[MaskInstance],
-) -> ClassCOTeResult:
-    """Compute the full class-level COTe decomposition for one image.
+) -> ClassMOTeResult:
+    """Compute the full class-level MOTe decomposition for one image.
 
-    Returns a :class:`~cot_score.types.ClassCOTeResult` containing all three
-    K×K interaction matrices and all three K-vector share quantities.
+    Returns a :class:`~pymote.types.ClassMOTeResult` containing all three
+    K×K interaction matrices, the K-vector share quantities, and the
+    per-GT-class Missing vectors.
 
     Share vectors each sum to 1.0 (when the corresponding global total is > 0).
     When a global total is zero, the corresponding share vector is all zeros.
@@ -320,7 +331,7 @@ def cote_class(
         preds: Sequence of MaskInstance, each with a non-None ``label``.
 
     Returns:
-        ClassCOTeResult with all matrices, share vectors, and the ordered
+        ClassMOTeResult with all matrices, share vectors, and the ordered
         ``classes`` list.
     """
     classes = sorted(set(ssu_to_class.values()))
@@ -339,10 +350,10 @@ def class_confusion_counts(
     ssu_to_class: Dict[int, Label],
     preds: Sequence[MaskInstance],
     classes: Sequence[Label],
-) -> ClassCOTeCounts:
+) -> ClassMOTeCounts:
     """Compute raw, unnormalised per-class pixel counts for one image.
 
-    Unlike :func:`cote_class`, ``classes`` is a required, externally-fixed
+    Unlike :func:`mote_class`, ``classes`` is a required, externally-fixed
     taxonomy (not derived from this image's ``ssu_to_class``), so that counts
     from many images can be summed elementwise with :func:`sum_class_counts`
     before normalising once with :func:`finalize_class_counts`. Averaging
@@ -364,7 +375,7 @@ def class_confusion_counts(
             accumulated together.
 
     Returns:
-        ClassCOTeCounts with raw per-class-pair pixel sums for this image.
+        ClassMOTeCounts with raw per-class-pair pixel sums for this image.
     """
     gt_ssu_map = _check_gt_map(gt_ssu_map)
     _validate_preds_have_labels(preds)
@@ -430,8 +441,12 @@ def class_confusion_counts(
     mp_b_global_int = mp_b_global.astype(np.int32)
     global_overlap_area = int(np.sum(ms.astype(np.int32) * (mp_global - mp_b_global_int)))
     global_trespass_pixels = int(np.sum(trespass_share_numer))
+    uncovered = ~mp_b_global
+    missing_numer = np.array(
+        [float(np.sum(class_gt[cls] & uncovered)) for cls in classes], dtype=np.float64
+    )
 
-    return ClassCOTeCounts(
+    return ClassMOTeCounts(
         classes=classes,
         coverage_numer=coverage_numer,
         pred_area=pred_area,
@@ -442,14 +457,15 @@ def class_confusion_counts(
         coverage_share_numer=coverage_share_numer,
         overlap_share_numer=overlap_share_numer,
         trespass_share_numer=trespass_share_numer,
+        missing_numer=missing_numer,
         global_coverage_area=global_coverage_area,
         global_overlap_area=global_overlap_area,
         global_trespass_pixels=global_trespass_pixels,
     )
 
 
-def sum_class_counts(a: ClassCOTeCounts, b: ClassCOTeCounts) -> ClassCOTeCounts:
-    """Accumulate two :class:`~cotescore.types.ClassCOTeCounts` elementwise.
+def sum_class_counts(a: ClassMOTeCounts, b: ClassMOTeCounts) -> ClassMOTeCounts:
+    """Accumulate two :class:`~pymote.types.ClassMOTeCounts` elementwise.
 
     Args:
         a: Running total (or the first image's counts).
@@ -457,17 +473,17 @@ def sum_class_counts(a: ClassCOTeCounts, b: ClassCOTeCounts) -> ClassCOTeCounts:
             the same order, as ``a``.
 
     Returns:
-        A new ClassCOTeCounts with every field summed.
+        A new ClassMOTeCounts with every field summed.
 
     Raises:
         ValueError: If ``a.classes != b.classes``.
     """
     if a.classes != b.classes:
         raise ValueError(
-            "Cannot sum ClassCOTeCounts with different class lists; pass the "
+            "Cannot sum ClassMOTeCounts with different class lists; pass the "
             "same fixed `classes` to every class_confusion_counts call."
         )
-    return ClassCOTeCounts(
+    return ClassMOTeCounts(
         classes=a.classes,
         coverage_numer=a.coverage_numer + b.coverage_numer,
         pred_area=a.pred_area + b.pred_area,
@@ -478,17 +494,18 @@ def sum_class_counts(a: ClassCOTeCounts, b: ClassCOTeCounts) -> ClassCOTeCounts:
         coverage_share_numer=a.coverage_share_numer + b.coverage_share_numer,
         overlap_share_numer=a.overlap_share_numer + b.overlap_share_numer,
         trespass_share_numer=a.trespass_share_numer + b.trespass_share_numer,
+        missing_numer=a.missing_numer + b.missing_numer,
         global_coverage_area=a.global_coverage_area + b.global_coverage_area,
         global_overlap_area=a.global_overlap_area + b.global_overlap_area,
         global_trespass_pixels=a.global_trespass_pixels + b.global_trespass_pixels,
     )
 
 
-def finalize_class_counts(counts: ClassCOTeCounts) -> ClassCOTeResult:
-    """Normalise accumulated :class:`~cotescore.types.ClassCOTeCounts` into
+def finalize_class_counts(counts: ClassMOTeCounts) -> ClassMOTeResult:
+    """Normalise accumulated :class:`~pymote.types.ClassMOTeCounts` into
     the final matrices, shares, and precision/recall/F1.
 
-    This is the division step shared by :func:`cote_class` (single image) and
+    This is the division step shared by :func:`mote_class` (single image) and
     the multi-image accumulation path (:func:`class_confusion_counts` +
     :func:`sum_class_counts`): call it once, after summing every image's
     counts, not per image.
@@ -498,7 +515,7 @@ def finalize_class_counts(counts: ClassCOTeCounts) -> ClassCOTeResult:
             :func:`class_confusion_counts` across every image in a dataset.
 
     Returns:
-        ClassCOTeResult with all matrices, share vectors, and
+        ClassMOTeResult with all matrices, share vectors, and
         precision/recall/F1.
     """
     classes = list(counts.classes)
@@ -526,6 +543,15 @@ def finalize_class_counts(counts: ClassCOTeCounts) -> ClassCOTeResult:
     if counts.global_trespass_pixels > 0:
         T_share = counts.trespass_share_numer / counts.global_trespass_pixels
 
+    M_share = np.zeros(K, dtype=np.float64)
+    total_missing = float(np.sum(counts.missing_numer))
+    if total_missing > 0:
+        M_share = counts.missing_numer / total_missing
+
+    M_rate = np.zeros(K, dtype=np.float64)
+    nonzero_gt = gt_area > 0
+    M_rate[nonzero_gt] = counts.missing_numer[nonzero_gt] / gt_area[nonzero_gt]
+
     tp = np.diag(counts.coverage_numer)
     coverage_precision = np.zeros(K, dtype=np.float64)
     nonzero_p = pred_area > 0
@@ -542,7 +568,7 @@ def finalize_class_counts(counts: ClassCOTeCounts) -> ClassCOTeResult:
     )
     micro_precision, micro_recall, micro_f1 = _micro_prf1(tp, pred_area, gt_area)
 
-    return ClassCOTeResult(
+    return ClassMOTeResult(
         classes=classes,
         coverage_matrix=C,
         overlap_matrix=O,
@@ -550,6 +576,8 @@ def finalize_class_counts(counts: ClassCOTeCounts) -> ClassCOTeResult:
         coverage_share=C_share,
         overlap_share=O_share,
         trespass_share=T_share,
+        missing_share=M_share,
+        missing_rate=M_rate,
         coverage_precision=coverage_precision,
         coverage_recall=coverage_recall,
         coverage_f1=coverage_f1,
@@ -563,7 +591,7 @@ __all__ = [
     "coverage_matrix",
     "overlap_matrix",
     "trespass_matrix",
-    "cote_class",
+    "mote_class",
     "class_confusion_counts",
     "sum_class_counts",
     "finalize_class_counts",

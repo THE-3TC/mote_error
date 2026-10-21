@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from cotescore.alto_ssu_tagger import ALTOSSUTagger, assign_alto_ssu
+from pymote.alto_ssu_tagger import ALTOSSUTagger, assign_alto_ssu
 
 ALTO_NS = "http://www.loc.gov/standards/alto/ns-v4#"
 

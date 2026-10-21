@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 from unittest.mock import Mock
-from cotescore.dataset import NCSEDataset, DocLayNetDataset
+from pymote.dataset import NCSEDataset, DocLayNetDataset
 
 
 class TestNCSEDataset:

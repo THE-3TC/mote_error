@@ -2,13 +2,13 @@
 
 Provides the standard PQ = SQ × RQ decomposition for evaluating panoptic
 segmentation outputs.  Inputs are a ground-truth panoptic label map and a list
-of :class:`~cotescore.types.MaskInstance` predictions (as produced by the
+of :class:`~pymote.types.MaskInstance` predictions (as produced by the
 existing HuggingFace adapters).
 
 Typical usage::
 
-    from cotescore.panoptic_quality import panoptic_quality
-    from cotescore.adapters import hf_panoptic_seg_to_masks
+    from pymote.panoptic_quality import panoptic_quality
+    from pymote.adapters import hf_panoptic_seg_to_masks
 
     # Ground truth: integer map where each unique id is one segment
     gt_panoptic_map = ...  # np.ndarray of shape (H, W), dtype int32
@@ -30,7 +30,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from cotescore.types import Label, MaskInstance
+from pymote.types import Label, MaskInstance
 
 
 def _mask_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
@@ -98,8 +98,8 @@ def panoptic_quality(
         gt_segments_info: Sequence of dicts, each with ``"id"`` (segment id
             in the map) and ``"label_id"`` (class label).  Segments with
             id 0 are treated as background and ignored.
-        preds: Predicted segments as :class:`~cotescore.types.MaskInstance`
-            objects (e.g. from :func:`~cotescore.adapters.hf_panoptic_seg_to_masks`).
+        preds: Predicted segments as :class:`~pymote.types.MaskInstance`
+            objects (e.g. from :func:`~pymote.adapters.hf_panoptic_seg_to_masks`).
         iou_threshold: Minimum IoU for a match to count as a true positive
             (default 0.5, the standard PQ threshold).
 

@@ -2,17 +2,19 @@
 
 import pytest
 import numpy as np
-from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-from cotescore.metrics import (
+from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote.layout import (
     coverage,
+    missing,
     overlap,
     iou,
     mean_iou,
     f1,
     trespass,
     excess,
-    cote_score as cot_score,
+    mote,
 )
+from pymote.types import MOTeResult
 from tests.reference_metrics import (
     coverage as ref_coverage,
     overlap as ref_overlap,
@@ -138,8 +140,8 @@ class TestCoverage:
         result = coverage(gt_map, pred_masks)
         reference = ref_coverage(pred, gt)
 
-        # When GT is empty and predictions exist, coverage is 0
-        assert abs(result - 0.0) < TOLERANCE
+        # With no GT there is nothing to miss, so coverage is perfect
+        assert abs(result - 1.0) < TOLERANCE
         # assert abs(result - reference) < TOLERANCE # Not valid for raw overlap comparison
 
     def test_coverage_both_empty(self):
@@ -948,180 +950,238 @@ class TestExcess:
         assert abs(result - 1.0) < TOLERANCE
 
 
-class TestCOTScore:
-    """Tests for the overall COT score (Equation 14)."""
+class TestMissing:
+    """Tests for the Missing error, the complement of coverage."""
 
-    def test_cot_perfect_score(self):
-        """Perfect predictions - COT score = 1.0."""
-        # Perfect match: C=1, O=0, T=0 → COT = 1 - 0 - 0 = 1.0
-        pred = [
-            {"x": 0, "y": 0, "width": 10, "height": 10},
-            {"x": 20, "y": 0, "width": 10, "height": 10},
-        ]
+    def test_missing_perfect_match(self):
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(gt, image_width=100, image_height=100)
+        assert abs(missing(gt_map, pred_masks) - 0.0) < TOLERANCE
+
+    def test_missing_no_predictions(self):
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        assert abs(missing(gt_map, []) - 1.0) < TOLERANCE
+
+    def test_missing_partial(self):
+        pred = [{"x": 0, "y": 0, "width": 5, "height": 10}]
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
+        assert abs(missing(gt_map, pred_masks) - 0.5) < TOLERANCE
+
+    def test_missing_unpredicted_ssu(self):
+        """An SSU with no prediction raises Missing by its share of GT area."""
         gt = [
             {"x": 0, "y": 0, "width": 10, "height": 10},
+            {"x": 20, "y": 0, "width": 10, "height": 30},
+        ]
+        pred = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
+        assert abs(missing(gt_map, pred_masks) - 0.75) < TOLERANCE
+
+    @pytest.mark.parametrize("n_preds", [0, 1, 3])
+    def test_missing_empty_ground_truth(self, n_preds):
+        gt_map = np.zeros((50, 50), dtype=np.int32)
+        pred_masks = [np.ones((50, 50), dtype=bool)] * n_preds
+        assert missing(gt_map, pred_masks) == 0.0
+
+    def test_missing_complements_coverage_random(self):
+        rng = np.random.default_rng(0)
+        for _ in range(25):
+            gt_map = np.zeros((40, 40), dtype=np.int32)
+            for k in range(1, rng.integers(1, 5)):
+                x, y = rng.integers(0, 35, 2)
+                gt_map[y : y + rng.integers(2, 12), x : x + rng.integers(2, 12)] = k
+            preds = []
+            for _ in range(rng.integers(0, 5)):
+                m = np.zeros((40, 40), dtype=bool)
+                x, y = rng.integers(0, 35, 2)
+                m[y : y + rng.integers(2, 20), x : x + rng.integers(2, 20)] = True
+                preds.append(m)
+            assert abs(missing(gt_map, preds) + coverage(gt_map, preds) - 1.0) < TOLERANCE
+
+
+class TestMOTe:
+    """Tests for the overall MOTe error, M + O + T."""
+
+    def test_mote_returns_named_tuple(self):
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(gt, image_width=100, image_height=100)
+        result = mote(gt_map, pred_masks)
+        assert isinstance(result, MOTeResult)
+        err, M, O, T, E = result
+        assert (err, M, O, T, E) == (
+            result.mote,
+            result.missing,
+            result.overlap,
+            result.trespass,
+            result.excess,
+        )
+
+    def test_mote_perfect_score(self):
+        """Perfect predictions - MOTe = 0."""
+        pred = [
+            {"x": 0, "y": 0, "width": 10, "height": 10},
             {"x": 20, "y": 0, "width": 10, "height": 10},
         ]
+        gt_map = _boxes_to_gt_ssu_map(pred, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
+        assert abs(mote(gt_map, pred_masks).mote - 0.0) < TOLERANCE
 
+    def test_mote_no_predictions(self):
+        """No predictions - MOTe = 1 (M=1, O=0, T=0)."""
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        result = mote(gt_map, [])
+        assert abs(result.mote - 1.0) < TOLERANCE
+        assert result.missing == 1.0 and result.excess == 0.0
+
+    def test_mote_partial_coverage(self):
+        pred = [{"x": 0, "y": 0, "width": 5, "height": 10}]
+        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
-        assert abs(result - 1.0) < TOLERANCE
+        assert abs(mote(gt_map, pred_masks).mote - 0.5) < TOLERANCE
 
-    def test_cot_no_predictions(self):
-        """No predictions - COT score = 0.0."""
-        # C=0, O=0, T=0 → COT = 0
-        pred = []
-        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
-
-        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, [])
-        assert abs(result - 0.0) < TOLERANCE
-
-    def test_cot_single_prediction(self):
-        """Single prediction - only coverage matters (O=0, T=0)."""
-        # n=1, so O=0 and T=0 by definition
-        pred = [{"x": 0, "y": 0, "width": 10, "height": 10}]
-        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
-
-        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
-        pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
-        # C=1, O=0, T=0 → COT = 1
-        assert abs(result - 1.0) < TOLERANCE
-
-    def test_cot_with_overlap(self):
-        """Overlapping predictions reduce COT score."""
-        # Two completely overlapping predictions
+    def test_mote_with_overlap(self):
+        """Two identical full-cover predictions: M=0, O=1, T=0 → MOTe = 1."""
         pred = [
             {"x": 0, "y": 0, "width": 10, "height": 10},
             {"x": 0, "y": 0, "width": 10, "height": 10},
         ]
         gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
-
-        # C=1 (perfect coverage)
-        # O=1 (complete overlap)
-        # T=0 (single GT, no trespass possible)
-        # COT = 1 - 1 - 0 = 0.0
-
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
-        assert abs(result - 0.0) < TOLERANCE
+        result = mote(gt_map, pred_masks)
+        assert abs(result.overlap - 1.0) < TOLERANCE
+        assert abs(result.mote - 1.0) < TOLERANCE
 
-    def test_cot_with_trespass(self):
-        """Trespassing predictions reduce COT score."""
-        # Multiple predictions with trespass
-        # Note: Per paper, with n=1, O and T are not calculated for COT score
-        # So we need n>=2 to test trespass in COT score
+    def test_mote_is_sum_of_components(self):
         gt = [
             {"x": 0, "y": 0, "width": 10, "height": 10},
             {"x": 10, "y": 0, "width": 10, "height": 10},
         ]
         pred = [
-            {"x": 0, "y": 0, "width": 5, "height": 10},  # Covers GT1 partially
-            {"x": 0, "y": 0, "width": 12, "height": 10},  # Overlaps both GTs
+            {"x": 0, "y": 0, "width": 5, "height": 10},
+            {"x": 0, "y": 0, "width": 12, "height": 10},
         ]
-
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        C = coverage(gt_map, pred_masks)
+        M = missing(gt_map, pred_masks)
         O = overlap(gt_map, pred_masks)
         T = trespass(gt_map, pred_masks)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
-        expected = C - O - T
-        assert abs(result - expected) < TOLERANCE
+        result = mote(gt_map, pred_masks)
+        assert T > 0
+        assert abs(result.mote - (M + O + T)) < TOLERANCE
 
-    def test_cot_partial_coverage(self):
-        """Partial coverage results in reduced COT score."""
-        # Single prediction covering half of GT
-        pred = [{"x": 0, "y": 0, "width": 5, "height": 10}]
-        gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
-
-        # C = 0.5, O = 0, T = 0
-        # COT = 0.5
-
+    def test_mote_single_box_whole_image(self):
+        """One box over the whole image: M=0, O=0, E=1, T = 1 - A_max / A^S."""
+        gt = [
+            {"x": 0, "y": 0, "width": 10, "height": 10},
+            {"x": 20, "y": 0, "width": 10, "height": 30},
+            {"x": 50, "y": 50, "width": 20, "height": 20},
+        ]
+        pred = [{"x": 0, "y": 0, "width": 100, "height": 100}]
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
-        assert abs(result - 0.5) < TOLERANCE
+        result = mote(gt_map, pred_masks)
+        a_s = 100 + 300 + 400
+        assert result.missing == 0.0
+        assert result.overlap == 0.0
+        assert abs(result.excess - 1.0) < TOLERANCE
+        assert abs(result.trespass - (1 - 400 / a_s)) < TOLERANCE
+        assert abs(result.mote - (1 - 400 / a_s)) < TOLERANCE
 
-    def test_cot_maximum_error(self):
-        """Maximum overlap and trespass (both at 1.0) gives COT = -1.0."""
-        # This is a theoretical case: to maximize both O and T,
-        # we need predictions that completely overlap AND trespass.
-        # From paper: "Overlap and Trespass can only be maximised by covering
-        # the entire ground truth which naturally maximises Coverage"
-        # So: C=1, O=1, T=1 → COT = 1 - 1 - 1 = -1.0
+    @pytest.mark.parametrize("n", [1, 2, 4])
+    def test_mote_identical_full_cover_boxes(self, n):
+        """n identical boxes covering m equal SSUs: O = n-1, T = n(1 - 1/m)."""
+        m = 4
+        gt = [{"x": 10 * i, "y": 0, "width": 10, "height": 10} for i in range(m)]
+        pred = [{"x": 0, "y": 0, "width": 10 * m, "height": 10}] * n
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
+        result = mote(gt_map, pred_masks)
+        expected = (n - 1) + n * (1 - 1 / m)
+        assert abs(result.mote - expected) < TOLERANCE
+        # Bounded by the practically attainable maximum 2n - 1 - n * A_max / A^S
+        assert result.mote <= 2 * n - 1 - n * (1 / m) + TOLERANCE
 
-        # Create scenario with maximum overlap and trespass
-        # Need multiple GTs and predictions that overlap completely and trespass maximally
+    def test_mote_can_exceed_one(self):
         gt = [
             {"x": 0, "y": 0, "width": 10, "height": 10},
             {"x": 20, "y": 0, "width": 10, "height": 10},
         ]
-
-        # Multiple predictions all covering both GTs completely
         pred = [
             {"x": 0, "y": 0, "width": 30, "height": 10},
             {"x": 0, "y": 0, "width": 30, "height": 10},
         ]
-
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(gt_map, pred_masks)
+        assert mote(gt_map, pred_masks).mote > 1.0
 
-        # C should be 1.0 (full coverage)
-        # O should be 1.0 (complete overlap)
-        # T should approach maximum
-        # COT should be negative
-        assert result < 0.0
+    def test_mote_empty_ground_truth(self):
+        """No GT: M=O=T=0, Excess still reported."""
+        gt_map = np.zeros((10, 10), dtype=np.int32)
+        pred = np.zeros((10, 10), dtype=bool)
+        pred[:5, :] = True
+        result = mote(gt_map, [pred, pred])
+        assert result[:4] == (0.0, 0.0, 0.0, 0.0)
+        assert abs(result.excess - 0.5) < TOLERANCE
 
-    def test_cot_weighted(self):
-        """Test weighted COT score."""
-        pred = [
-            {"x": 0, "y": 0, "width": 10, "height": 10},
-            {"x": 0, "y": 0, "width": 10, "height": 10},
-        ]
+    def test_mote_unassigned_prediction_only_affects_excess(self):
         gt = [{"x": 0, "y": 0, "width": 10, "height": 10}]
+        gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
+        base = _boxes_to_pred_masks(gt, image_width=100, image_height=100)
+        stray = _boxes_to_pred_masks(
+            [{"x": 50, "y": 50, "width": 10, "height": 10}], image_width=100, image_height=100
+        )
+        with_stray = mote(gt_map, base + stray)
+        assert with_stray.mote == mote(gt_map, base).mote
+        assert with_stray.excess > 0
 
-        # C=1, O=1, T=0
-        # With weights (2, 1, 1): COT = 2*1 - 1*1 - 1*0 = 1.0
+    def test_mote_weighted(self):
+        pred = [
+            {"x": 0, "y": 0, "width": 10, "height": 10},
+            {"x": 0, "y": 0, "width": 5, "height": 10},
+        ]
+        gt = [
+            {"x": 0, "y": 0, "width": 10, "height": 10},
+            {"x": 10, "y": 0, "width": 10, "height": 10},
+        ]
         gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
         pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-        result, _, _, _, _ = cot_score(
+        _, M, O, T, _ = mote(gt_map, pred_masks)
+        result = mote(
             gt_map,
             pred_masks,
-            weight_coverage=2.0,
-            weight_overlap=1.0,
-            weight_trespass=1.0,
+            weight_missing=2.0,
+            weight_overlap=0.5,
+            weight_trespass=3.0,
         )
-        assert abs(result - 1.0) < TOLERANCE
+        assert abs(result.mote - (2.0 * M + 0.5 * O + 3.0 * T)) < TOLERANCE
 
-    def test_cot_components_range(self):
-        """Verify that COT score stays within expected range."""
-        # Various scenarios
+    def test_mote_components_nonnegative(self):
         test_cases = [
-            # Perfect
             (
                 [{"x": 0, "y": 0, "width": 10, "height": 10}],
                 [{"x": 0, "y": 0, "width": 10, "height": 10}],
             ),
-            # Partial coverage
             (
                 [{"x": 0, "y": 0, "width": 5, "height": 10}],
                 [{"x": 0, "y": 0, "width": 10, "height": 10}],
             ),
-            # No overlap
             (
                 [{"x": 0, "y": 0, "width": 10, "height": 10}],
                 [{"x": 20, "y": 0, "width": 10, "height": 10}],
             ),
         ]
-
         for pred, gt in test_cases:
             gt_map = _boxes_to_gt_ssu_map(gt, image_width=100, image_height=100)
             pred_masks = _boxes_to_pred_masks(pred, image_width=100, image_height=100)
-            result, _, _, _, _ = cot_score(gt_map, pred_masks)
-            # With equal weights, COT should be in [-1, 1]
-            assert -1.0 <= result <= 1.0
+            result = mote(gt_map, pred_masks)
+            assert all(v >= 0.0 for v in result)
+            assert 0.0 <= result.missing <= 1.0

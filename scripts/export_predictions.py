@@ -4,7 +4,7 @@ Export model predictions and ground truth bounding boxes to CSV.
 
 Runs a single model over the NCSE test set and writes a flat CSV with one row
 per bounding box (both GT and predictions). The output is pandas-friendly and
-contains all columns needed to reconstruct the cot_score visualisation pipeline.
+contains all columns needed to reconstruct the MOTe visualisation pipeline.
 
 Usage:
     python scripts/export_predictions.py --model ppdoc-l
@@ -23,7 +23,7 @@ from tqdm import tqdm
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from cotescore.dataset import DocBankDataset, HierTextDataset, HNLA2013Dataset, NCSEDataset, SpiritualistDataset
+from pymote.dataset import DocBankDataset, HierTextDataset, HNLA2013Dataset, NCSEDataset, SpiritualistDataset
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

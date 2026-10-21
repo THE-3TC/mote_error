@@ -20,24 +20,25 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-from cotescore.dataset import (
+from pymote.dataset import (
     NCSEDataset,
     HNLA2013Dataset,
     DocLayNetDataset,
     SpiritualistDataset,
     HierTextDataset,
 )
-from cotescore.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
-from cotescore.types import MaskInstance
-from cotescore.layout import (
+from pymote.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
+from pymote.types import MaskInstance
+from pymote.layout import (
     coverage,
+    missing,
     overlap,
     trespass,
     excess,
-    cote_score as cot_score,
+    mote,
     mean_iou,
 )
-from cotescore.map_metric import MAPMetric
+from pymote.map_metric import MAPMetric
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -138,14 +139,16 @@ def _compute_image_metrics(
             score = mean_iou(predictions, ground_truth)
         elif metric_name == "coverage":
             score = coverage(gt_ssu_map, pred_masks)
+        elif metric_name == "missing":
+            score = missing(gt_ssu_map, pred_masks)
         elif metric_name == "overlap":
             score = overlap(gt_ssu_map, pred_masks)
         elif metric_name == "trespass":
             score = trespass(gt_ssu_map, pred_masks)
         elif metric_name == "excess":
             score = excess(gt_ssu_map, pred_masks)
-        elif metric_name == "cot_score":
-            score = cot_score(gt_ssu_map, pred_masks)[0]
+        elif metric_name == "mote":
+            score = mote(gt_ssu_map, pred_masks).mote
         else:
             logger.warning(f"Unknown per-image metric: {metric_name}")
             score = 0.0
@@ -281,10 +284,11 @@ class BenchmarkRunner:
                 "mean_iou",
                 "f1_50",
                 "coverage",
+                "missing",
                 "overlap",
                 "trespass",
                 "excess",
-                "cot_score",
+                "mote",
                 "map",
             ]
 
@@ -437,7 +441,7 @@ class BenchmarkRunner:
             if "f1_50" in metrics:
                 # f1_50 pools TP/FP/FN over the set, so every region counts equally (COCO
                 # convention). f1_50_page_mean averages per-page F1, so every page counts
-                # equally, matching how COTe and the other area metrics are averaged.
+                # equally, matching how MOTe and the other area metrics are averaged.
                 for key in ("f1_50", "precision_50", "recall_50"):
                     results["metrics"][key] = map_scores[key]
                 results["metrics"]["f1_50_page_mean"] = float(np.mean(map_scores["per_image_f1_50"]))
@@ -472,14 +476,14 @@ class BenchmarkRunner:
             print(f"  mAP@75         : {metrics['map_75']:.4f}")
             print("-" * 30)
 
-        for name in ["mean_iou", "f1_50", "f1_50_page_mean", "precision_50", "recall_50", "coverage", "overlap", "trespass"]:
+        for name in ["mean_iou", "f1_50", "f1_50_page_mean", "precision_50", "recall_50", "coverage", "missing", "overlap", "trespass", "excess"]:
             if name in metrics:
                 print(f"  {name.upper():15s}: {metrics[name]:.4f}")
 
-        # Print COT score separately (can be negative)
-        if "cot_score" in metrics:
+        # Print MOTe error separately (0 is perfect, can exceed 1)
+        if "mote" in metrics:
             print("-" * 30)
-            print(f"  {'COT SCORE':15s}: {metrics['cot_score']:+.4f}")
+            print(f"  {'MOTE ERROR':15s}: {metrics['mote']:.4f}")
 
         if "mean_latency_ms" in metrics:
             print("-" * 30)

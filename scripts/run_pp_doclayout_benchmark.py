@@ -88,7 +88,7 @@ def main():
     parser.add_argument(
         "--metrics",
         nargs="+",
-        default=["mean_iou", "coverage", "overlap", "trespass", "cot_score", "map"],
+        default=["mean_iou", "coverage", "missing", "overlap", "trespass", "mote", "map"],
         help="Metrics to compute",
     )
 

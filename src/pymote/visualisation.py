@@ -1,16 +1,16 @@
 """
-Visualisation utilities for COTe (Coverage, Overlap, Trespass, and Excess) evaluation.
+Visualisation utilities for MOTe (Missing, Overlap, Trespass, and Excess) evaluation.
 
 Provides pixel-level mask computation and matplotlib-based rendering of
-COTe states as coloured overlays on document images.
+MOTe states as coloured overlays on document images.
 
 Two overlay flavours share the same renderer:
 
-* **COTe states** — :func:`compute_cote_masks` + :func:`visualize_cote_states`,
+* **MOTe states** — :func:`compute_mote_masks` + :func:`visualize_mote_states`,
   colouring each pixel by whether the prediction there was correct.
 * **Predicted classes** — :func:`compute_class_masks` +
   :func:`visualize_class_masks`, colouring each pixel by the class the model
-  assigned. Useful side by side with the COTe panel to see *what* a model
+  assigned. Useful side by side with the MOTe panel to see *what* a model
   called a region, not just whether it got the extent right.
 """
 
@@ -20,21 +20,21 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cotescore._core import (
+from pymote._core import (
     _as_pred_masks,
     _check_gt_map,
     _compose_pred_count,
     _ms_mask,
     _owner_ssu_id,
 )
-from cotescore.class_metrics import _group_preds_by_class, _validate_preds_have_labels
-from cotescore.types import Label, MaskInstance
+from pymote.class_metrics import _group_preds_by_class, _validate_preds_have_labels
+from pymote.types import Label, MaskInstance
 
 RGBA = Tuple[float, float, float, float]
 
-# RGBA colour palette for each COTe state
-COTE_COLORS: Dict[str, RGBA] = {
-    "coverage": (0.2, 0.7, 0.3, 0.5),  # Green  – good
+# RGBA colour palette for each MOTe state
+MOTE_COLORS: Dict[str, RGBA] = {
+    "covered": (0.2, 0.7, 0.3, 0.5),  # Green  – good
     "overlap": (1.0, 0.8, 0.0, 0.5),  # Amber  – warning
     "trespass": (0.9, 0.2, 0.2, 0.6),  # Red    – bad
     "overlap_trespass": (0.7, 0.0, 0.5, 0.6),  # Purple – severe
@@ -42,8 +42,8 @@ COTE_COLORS: Dict[str, RGBA] = {
     "excess": (0.3, 0.5, 0.9, 0.4),  # Blue   – outside scope
 }
 
-COTE_LABELS: Dict[str, str] = {
-    "coverage": "Coverage",
+MOTE_LABELS: Dict[str, str] = {
+    "covered": "Covered",
     "overlap": "Overlap",
     "trespass": "Trespass",
     "overlap_trespass": "Overlap + Trespass",
@@ -110,26 +110,27 @@ def class_palette(
     return palette
 
 
-def compute_cote_masks(
+def compute_mote_masks(
     gt_ssu_map: np.ndarray,
     preds: Sequence[Union[np.ndarray, MaskInstance]],
 ) -> Dict[str, np.ndarray]:
-    """Compute pixel-level binary masks for each COTe state.
+    """Compute pixel-level binary masks for each MOTe state.
 
     Args:
         gt_ssu_map: 2D integer array where each pixel value is the SSU id of
             the ground-truth region at that location. Background pixels are 0.
         preds: Sequence of 2D boolean prediction masks (one per predicted box),
-            or :class:`~cot_score.types.MaskInstance` objects. Same interface
-            as the scalar metric functions (e.g. ``coverage``, ``trespass``).
+            or :class:`~pymote.types.MaskInstance` objects. Same interface
+            as the scalar metric functions (e.g. ``missing``, ``trespass``).
 
     Returns:
-        Dict with keys ``'coverage'``, ``'overlap'``, ``'trespass'``,
+        Dict with keys ``'covered'``, ``'overlap'``, ``'trespass'``,
         ``'overlap_trespass'``, ``'missing'``, ``'excess'``, each mapping to a
         binary int32 np.ndarray mask of the same shape as ``gt_ssu_map``.
 
-        ``'missing'`` marks GT pixels that no prediction covers; together with
-        the four covered states it fully partitions the GT region.
+        ``'missing'`` marks GT pixels that no prediction covers, so its area
+        over the GT area is the Missing error; together with the four covered
+        states it fully partitions the GT region.
     """
     gt_ssu_map = _check_gt_map(gt_ssu_map)
     pred_masks = _as_pred_masks(preds)
@@ -153,7 +154,7 @@ def compute_cote_masks(
     has_trespass = trespass_mask > 0
 
     return {
-        "coverage": (in_gt & single & ~has_trespass).astype(np.int32),
+        "covered": (in_gt & single & ~has_trespass).astype(np.int32),
         "overlap": (in_gt & multi & ~has_trespass).astype(np.int32),
         "trespass": (in_gt & single & has_trespass).astype(np.int32),
         "overlap_trespass": (in_gt & multi & has_trespass).astype(np.int32),
@@ -172,7 +173,7 @@ def compute_class_masks(
     Predictions of the same class are unioned. Pixels claimed by two or more
     *different* classes are moved out of their class masks into a single
     :data:`MIXED_KEY` mask, so the returned masks are mutually exclusive —
-    the same invariant :func:`compute_cote_masks` holds, and the one
+    the same invariant :func:`compute_mote_masks` holds, and the one
     :func:`visualize_class_masks` relies on to keep its legend honest. Without
     it, stacked translucent overlays would blend into a colour naming no class.
 
@@ -182,7 +183,7 @@ def compute_class_masks(
 
     Args:
         preds: Predictions carrying a class label. Same interface as the
-            class-level metric functions (e.g. :func:`cote_class`).
+            class-level metric functions (e.g. :func:`mote_class`).
         classes: Class labels to emit masks for, in a fixed order. Classes
             with no predictions still get an all-zero mask, so the caller can
             rely on the key set. Defaults to the labels present in ``preds``.
@@ -264,17 +265,17 @@ def _draw_overlays(
     return legend_patches
 
 
-def visualize_cote_states(
+def visualize_mote_states(
     image: np.ndarray,
     masks: Dict[str, np.ndarray],
     ax: plt.Axes = None,
     show_missing: bool = True,
 ):
-    """Draw image and COTe mask overlays into an existing axes.
+    """Draw image and MOTe mask overlays into an existing axes.
 
     Args:
         image: Grayscale (2D) or RGB (3D) image array.
-        masks: Dict of binary masks, e.g. from :func:`compute_cote_masks`.
+        masks: Dict of binary masks, e.g. from :func:`compute_mote_masks`.
         ax: Matplotlib axes to draw into. If None, a new figure and axes are
             created and the figure is returned.
         show_missing: Whether to draw the ``'missing'`` (uncovered GT) overlay,
@@ -294,10 +295,10 @@ def visualize_cote_states(
 
     colors = {
         state: color
-        for state, color in COTE_COLORS.items()
+        for state, color in MOTE_COLORS.items()
         if show_missing or state != "missing"
     }
-    legend_patches = _draw_overlays(image, masks, colors, COTE_LABELS, ax)
+    legend_patches = _draw_overlays(image, masks, colors, MOTE_LABELS, ax)
     return fig if return_fig else legend_patches
 
 
@@ -309,7 +310,7 @@ def visualize_class_masks(
 ):
     """Draw image and predicted-class mask overlays into an existing axes.
 
-    The class counterpart to :func:`visualize_cote_states`: same renderer, same
+    The class counterpart to :func:`visualize_mote_states`: same renderer, same
     return contract, but coloured by which class the model assigned rather than
     by whether it was correct.
 

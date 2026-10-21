@@ -14,22 +14,22 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # COTe: a worked example
+    # MOTe: a worked example
 
-    The COTe score is a decomposable evaluation metric for Document Layout Analysis. The COTe assigns every pixel a single state based on the relationship between prediction and ground truth. There are 6 possible pixel states, which produce the 5 elements that make up the COTe score (missing being complementary to Coverage).
+    The MOTe error is a decomposable evaluation metric for Document Layout Analysis. The MOTe assigns every pixel a single state based on the relationship between prediction and ground truth. There are 6 possible pixel states, which produce the Missing, Overlap and Trespass errors that sum to the MOTe error, plus the support metric Excess.
 
-    - **coverage** — ground truth found by exactly one prediction
+    - **covered** — ground truth found by exactly one prediction
     - **overlap** — ground truth claimed by more than one
     - **trespass** — ground truth covered by a prediction belonging to another unit
     - **overlap + trespass** — both at once
     - **excess** — background a prediction claimed
     - **missing** — ground truth no prediction found
 
-    The COTe Score builds on the Semantic Structural Unit (SSU) concept, which groups text using the logical groups that come from the narrative flow. As such, the title of a limerick and the limerick itself form a Semantic unit; however, as the title and the text are different classes of text, they each form their own structural unit. As shown in the example below, the first and last limericks are formed of two SSUs each whilst limerick 2 is formed of three as the limerick text is split across both columns.
+    The MOTe error builds on the Semantic Structural Unit (SSU) concept, which groups text using the logical groups that come from the narrative flow. As such, the title of a limerick and the limerick itself form a Semantic unit; however, as the title and the text are different classes of text, they each form their own structural unit. As shown in the example below, the first and last limericks are formed of two SSUs each whilst limerick 2 is formed of three as the limerick text is split across both columns.
 
-    This notebook provides a worked visual example of the COTe score. It uses a series of three limericks on a two-column layout.
+    This notebook provides a worked visual example of the MOTe error. It uses a series of three limericks on a two-column layout.
 
-    By the end of the notebook, you will have gained an intuitive and practical understanding of the COTe score and how, using the SSU, it is more expressive than the traditional approach to Document Layout Analysis, the “F1”.
+    By the end of the notebook, you will have gained an intuitive and practical understanding of the MOTe error and how, using the SSU, it is more expressive than the traditional approach to Document Layout Analysis, the “F1”.
     """)
     return
 
@@ -40,35 +40,35 @@ def _():
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
 
-    from cotescore import (
+    from pymote import (
         load_limerick_example,
         extract_ssu_boxes,
         extract_line_boxes,
         extract_word_boxes,
         reconstruct_text,
-        cote_score,
-        compute_cote_masks,
-        visualize_cote_states,
+        mote,
+        compute_mote_masks,
+        visualize_mote_states,
     )
-    from cotescore.layout import f1, iou, mean_iou
-    from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from pymote.layout import f1, iou, mean_iou
+    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
     return (
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
-        compute_cote_masks,
-        cote_score,
+        compute_mote_masks,
         extract_line_boxes,
         extract_ssu_boxes,
         extract_word_boxes,
         f1,
         load_limerick_example,
         mean_iou,
+        mote,
         np,
         patches,
         plt,
         reconstruct_text,
-        visualize_cote_states,
+        visualize_mote_states,
     )
 
 
@@ -254,16 +254,16 @@ def _(gt_boxes, image, line_boxes, patches, plt, save_figure, word_boxes):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Pragmatic Error and Pragmatic Competence: How F1 and COTe respond to granularity mismatches
+    ## Pragmatic Error and Pragmatic Competence: How F1 and MOTe respond to granularity mismatches
 
     IoU based prediction metrics such as the F1 match predictions to ground truth on a one-to-one basis using an IoU
     threshold. If the prediction and ground truth have significantly different levels of granularity, then the IoU becomes small, and the score collapses, even if the overall prediction is very high. This failure of the evaluation metric to understand the model/data relationship is a ‘**Pragmatic failure**’.
 
-    In contrast, the COTe score has a many-to-one relationship: many predictions can map to a single SSU. This makes the COTe score substantially more robust to granularity differences,, giving it higher ‘**Pragmatic competence**’, or ability to interpret the model/data relationship, than its IoU-based counterparts.
+    In contrast, the MOTe error has a many-to-one relationship: many predictions can map to a single SSU. This makes the MOTe error substantially more robust to granularity differences,, giving it higher ‘**Pragmatic competence**’, or ability to interpret the model/data relationship, than its IoU-based counterparts.
 
     Below, the line-level ground truth is used as the prediction for the SSU-level ground truth, and vice versa. This means that both variants should get perfect scores.
-    However, the mean IoU and the F1 score are very bad for both. In contrast, the COTe scores perfectly when lines are used as GT, and scores very highly when lines are used as predictions. This difference is because the line predictions miss empty whitespace created by SSU that creates boxes based on the maximum extent of the characters they contain.
-    Despite this drop in performance, the COTe score gives a substantially more granularity robust result than the F1.
+    However, the mean IoU and the F1 score are very bad for both. In contrast, the MOTe error is zero when lines are used as GT, and very low when lines are used as predictions. This difference is because the line predictions miss empty whitespace created by SSU that creates boxes based on the maximum extent of the characters they contain.
+    Despite this small error, the MOTe error gives a substantially more granularity robust result than the F1.
     """)
     return
 
@@ -272,23 +272,23 @@ def _(mo):
 def _(
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
-    cote_score,
     f1,
     gt_boxes,
     image,
     line_boxes,
     mean_iou,
+    mote,
 ):
     _H, _W = image.shape[:2]
 
     def _score(gt, preds, label):
-    # PRint out the F1 mean IoU and and COTe score given prediction and Ground Truth masks. 
+    # Print out the F1, mean IoU and MOTe error given prediction and Ground Truth masks.
         _map = boxes_to_gt_ssu_map(gt, _W, _H, _W, _H)
         _masks = boxes_to_pred_masks(preds, _W, _H, _W, _H)
-        _cote, _C, _O, _T, _E = cote_score(_map, _masks)
+        _mote, _M, _O, _T, _E = mote(_map, _masks)
         print(f"  {label}")
         print(f"    F1@0.5   {f1(preds, gt):.4f}     mIoU {mean_iou(preds, gt):.4f}")
-        print(f"    COTe     {_cote:.4f}     coverage {_C:.4f}  overlap {_O:.4f}  "
+        print(f"    MOTe     {_mote:.4f}     missing {_M:.4f}  overlap {_O:.4f}  "
               f"trespass {_T:.4f}  excess {_E:.4f}")
 
     _score(gt_boxes, line_boxes, "GT = SSU, predictions = lines")
@@ -300,7 +300,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Predicting with COTe
+    ## Predicting with MOTe
 
     Using the example predictions loaded at the beggining of the notebook we overlay them on top of the SSU ground truth and visualise the resulting pixel classifications
     """)
@@ -309,23 +309,23 @@ def _(mo):
 
 @app.cell
 def _(
-    compute_cote_masks,
+    compute_mote_masks,
     gt_ssu_map,
     image,
     plt,
     pred_masks,
     save_figure,
-    visualize_cote_states,
+    visualize_mote_states,
 ):
-    cote_masks = compute_cote_masks(gt_ssu_map, pred_masks)
+    mote_masks = compute_mote_masks(gt_ssu_map, pred_masks)
 
     _fig, _ax = plt.subplots(figsize=(14, 6))
     _ax.imshow(image, cmap='gray')
-    _patches = visualize_cote_states(image, cote_masks, ax=_ax)
+    _patches = visualize_mote_states(image, mote_masks, ax=_ax)
     _ax.legend(handles=_patches, loc='lower center', fontsize=9, ncol = 6)
-    _ax.set_title("COTe pixel states")
+    _ax.set_title("MOTe pixel states")
     _ax.axis('off')
-    save_figure(_fig, "cote_pixel_states")
+    save_figure(_fig, "mote_pixel_states")
     plt.show()
     return
 
@@ -337,7 +337,7 @@ def _(mo):
 
     Whilst the visualisation provides clear insight into the prediction, the quantification below helps us understand what the prediction means.
 
-    By decomposing the overall COTe score of 0.67 into its constituent parts, we can start seeing where the model's strengths and weaknesses lie. In this case, although coverage is high at 0.91, there is significant Overlap (0.12) and Trespass (0.12). This way, we are able to start thinking about whether the errors produced at the Document Layout Analysis stage will have a negative impact downstream for the task we are trying to perform.
+    By decomposing the overall MOTe error of 0.33 into its constituent parts, we can start seeing where the model's strengths and weaknesses lie. In this case, although Missing is low at 0.09, there is significant Overlap (0.12) and Trespass (0.12). This way, we are able to start thinking about whether the errors produced at the Document Layout Analysis stage will have a negative impact downstream for the task we are trying to perform.
     """)
     return
 
@@ -346,11 +346,11 @@ def _(mo):
 def _(
     boxes_to_gt_ssu_map,
     boxes_to_pred_masks,
-    cote_score,
     f1,
     gt_boxes,
     image,
     mean_iou,
+    mote,
     pred_boxes,
 ):
     IMG_H, IMG_W = image.shape[:2]
@@ -358,10 +358,10 @@ def _(
     gt_ssu_map = boxes_to_gt_ssu_map(gt_boxes, IMG_W, IMG_H, IMG_W, IMG_H)
     pred_masks = boxes_to_pred_masks(pred_boxes, IMG_W, IMG_H, IMG_W, IMG_H)
 
-    cote, coverage, overlap, trespass, excess = cote_score(gt_ssu_map, pred_masks)
+    error, missing, overlap, trespass, excess = mote(gt_ssu_map, pred_masks)
 
-    print(f"  COTe       {cote:.4f}")
-    print(f"    coverage {coverage:.4f}   of the ground truth was found")
+    print(f"  MOTe       {error:.4f}")
+    print(f"    missing  {missing:.4f}   of the ground truth was not found")
     print(f"    overlap  {overlap:.4f}   was claimed by more than one prediction")
     print(f"    trespass {trespass:.4f}   was attributed to the wrong unit")
     print(f"    excess   {excess:.4f}   of the background was claimed")
@@ -386,7 +386,7 @@ def _(mo):
 
 @app.cell
 def _(chars):
-    from cotescore import chars_to_region_chars
+    from pymote import chars_to_region_chars
 
     region_chars = chars_to_region_chars(chars)
 

@@ -183,10 +183,11 @@ def main():
         "recall_50",
         "mean_iou",
         "coverage",
+        "missing",
         "overlap",
         "trespass",
         "excess",
-        "cot_score",
+        "mote",
     ]
     metric_labels = {
         "map": "mAP (COCO)",
@@ -198,10 +199,11 @@ def main():
         "recall_50": "Recall@50",
         "mean_iou": "Mean IoU",
         "coverage": "Coverage",
+        "missing": "Missing",
         "overlap": "Overlap",
         "trespass": "Trespass",
         "excess": "Excess",
-        "cot_score": "COT Score",
+        "mote": "MOTe Error",
     }
 
     run_models = list(all_results["models"].keys())
@@ -219,10 +221,7 @@ def main():
         row = f"{metric_labels[metric]:<20}"
         for m in run_models:
             score = all_results["models"].get(m, {}).get(metric, "N/A")
-            if metric == "cot_score":
-                score_str = f"{score:+.4f}" if isinstance(score, float) else str(score)
-            else:
-                score_str = f"{score:.4f}" if isinstance(score, float) else str(score)
+            score_str = f"{score:.4f}" if isinstance(score, float) else str(score)
             row += f" | {score_str:<{col_w}}"
         print(row)
     print("=" * total_w)

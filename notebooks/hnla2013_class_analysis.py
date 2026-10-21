@@ -7,7 +7,7 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # HNLA2013 class-level COTe analysis
+    # HNLA2013 class-level MOTe analysis
 
     Loads bbox+class predictions exported by
     `scripts/export_predictions.py --dataset-name hnla2013` (one CSV per
@@ -15,7 +15,7 @@ def _(mo):
     native label vocabulary onto a shared, simplified combined taxonomy (see
     section 1), and computes per-class coverage / overlap / trespass
     matrices plus a derived coverage-precision / coverage-recall /
-    coverage-F1 (per-class, micro-averaged) via `cotescore.class_metrics`.
+    coverage-F1 (per-class, micro-averaged) via `pymote.class_metrics`.
 
     Counts are accumulated across every image with `class_confusion_counts`
     + `sum_class_counts` and normalised once with `finalize_class_counts` —
@@ -33,13 +33,13 @@ def _():
     from pathlib import Path
     import matplotlib.pyplot as plt
 
-    from cotescore.adapters import (
+    from pymote.adapters import (
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
         build_ssu_to_class,
         compute_canvas,
     )
-    from cotescore.class_metrics import (
+    from pymote.class_metrics import (
         class_confusion_counts,
         sum_class_counts,
         finalize_class_counts,
@@ -276,7 +276,7 @@ def _(
     EVAL_MAX_DIM = 2000
 
     def model_class_counts(df, model_name):
-        """Accumulate ClassCOTeCounts across every image for one model.
+        """Accumulate ClassMOTeCounts across every image for one model.
 
         Raw pixel sums are summed per-image and normalised once at the end
         (via `finalize_class_counts`, called by the next cell) rather than
@@ -377,7 +377,7 @@ def _(mo):
     predicted-area-normalised) plus a GT-area-normalised recall term that
     isn't otherwise available from `coverage_matrix` alone. This is a
     *pixel/area*-based F1 — distinct from the IoU-threshold, instance-level
-    `f1()` in `cotescore.layout`.
+    `f1()` in `pymote.layout`.
     """)
     return
 

@@ -5,7 +5,7 @@ Tests for the pycocotools-backed MAPMetric.
 import numpy as np
 import pytest
 
-from cotescore.map_metric import MAPMetric
+from pymote.map_metric import MAPMetric
 
 
 def _box(x, y, w, h, cls="text", conf=None):
@@ -184,7 +184,7 @@ class TestMAPMetricF1:
 
     def test_agrees_with_layout_f1(self):
         """The per-image layout.f1 uses the same COCO matching rule."""
-        from cotescore.layout import f1
+        from pymote.layout import f1
 
         rng = np.random.default_rng(0)
         metric = MAPMetric()

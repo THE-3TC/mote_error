@@ -19,9 +19,9 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # COT Metrics Exploration
+    # MOTe Metrics Exploration
 
-    This notebook provides an interactive environment to visualize and understand the **Coverage, Overlap, Trespass, and Excess (COTe)** metrics for Document Layout Analysis.
+    This notebook provides an interactive environment to visualize and understand the **Missing, Overlap, Trespass, and Excess (MOTe)** metrics for Document Layout Analysis.
 
     We will visualize how different bounding box layouts affect each metric component.
     """)
@@ -39,10 +39,10 @@ def _():
 
     sys.path.append(os.path.abspath('.'))
 
-    from cotescore.metrics import cote_score
-    from cotescore.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from pymote.layout import mote
+    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
-    return boxes_to_gt_ssu_map, boxes_to_pred_masks, cote_score, patches, plt
+    return boxes_to_gt_ssu_map, boxes_to_pred_masks, mote, patches, plt
 
 
 @app.cell(hide_code=True)
@@ -56,7 +56,7 @@ def _(mo):
 
 
 @app.cell
-def _(boxes_to_gt_ssu_map, boxes_to_pred_masks, cote_score, patches, plt):
+def _(boxes_to_gt_ssu_map, boxes_to_pred_masks, mote, patches, plt):
     def plot_scenario(gt_boxes, pred_boxes, title, img_width=100, img_height=100):
         fig, ax = plt.subplots(figsize=(12, 8))
         ax.set_xlim(0, img_width)
@@ -106,15 +106,15 @@ def _(boxes_to_gt_ssu_map, boxes_to_pred_masks, cote_score, patches, plt):
         gt_ssu_map = boxes_to_gt_ssu_map(gt_boxes_with_ids, img_width, img_height, img_width, img_height)
         pred_masks = boxes_to_pred_masks(pred_boxes, img_width, img_height, img_width, img_height)
 
-        cot, c, o, t, e = cote_score(gt_ssu_map, pred_masks)
+        err, m, o, t, e = mote(gt_ssu_map, pred_masks)
 
         metrics_text = (
-            f"Coverage: {c:.3f}\n"
+            f"Missing:  {m:.3f}\n"
             f"Overlap:  {o:.3f}\n"
             f"Trespass: {t:.3f}\n"
             f"Excess:   {e:.3f}\n"
             f"----------------\n"
-            f"COT Score: {cot:.3f}"
+            f"MOTe Error: {err:.3f}"
         )
 
         props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
@@ -139,7 +139,7 @@ def _(boxes_to_gt_ssu_map, boxes_to_pred_masks, cote_score, patches, plt):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Scenario 1: High Coverage (Ideal)
+    ## Scenario 1: Full Coverage, nothing Missing (Ideal)
     A single prediction perfectly covers a single ground truth. Ideal state.
     """)
     return
@@ -148,7 +148,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Scenario 2: Partial Coverage
+    ## Scenario 2: Partial Coverage, some Missing
     Prediction only covers half the ground truth.
     """)
     return
@@ -158,17 +158,17 @@ def _(mo):
 def _(plot_scenario):
     gt2 = [{"x": 20, "y": 20, "width": 40, "height": 40}]
     pred2 = [{"x": 20, "y": 20, "width": 20, "height": 40}]
-    plot_scenario(gt2, pred2, "Scenario 2: Partial Coverage")
+    plot_scenario(gt2, pred2, "Scenario 2: Partial Coverage, some Missing")
     return
 
 
-app._unparsable_cell(
-    r"""
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Scenario 3: High Overlap
     Two predictions cover the same area. Overlap penalizes redundancy.
-    """,
-    name="_"
-)
+    """)
+    return
 
 
 @app.cell
@@ -205,7 +205,7 @@ def _(plot_scenario):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Scenario 6: Mixed COT
+    ## Scenario 6: Mixed MOTe
     Demonstrates interaction of metrics. Overlap in background (gap between GTs) is IGNORED by overlap metric.
     """)
     return
@@ -221,7 +221,7 @@ def _(plot_scenario):
         {"x": 10, "y": 20, "width": 45, "height": 30},
         {"x": 45, "y": 20, "width": 35, "height": 30},
     ]
-    plot_scenario(gt6, pred6, "Scenario 6: Mixed COT")
+    plot_scenario(gt6, pred6, "Scenario 6: Mixed MOTe")
     return
 
 
