@@ -27,7 +27,7 @@ pip install -e ".[models]"
 pytest
 
 # Run with coverage
-pytest --cov=pymote --cov=models --cov=benchmarks
+pytest --cov=mote_error --cov=models --cov=benchmarks
 
 # Run specific test file
 pytest tests/test_metrics.py
@@ -49,14 +49,14 @@ isort .
 flake8 .
 
 # Type checking
-mypy src/pymote models benchmarks
+mypy src/mote_error models benchmarks
 ```
 
 ## Project Structure
 
 ```
-pymote/
-├── src/pymote/      # Core metrics library
+mote_error/
+├── src/mote_error/      # Core metrics library
 │   ├── layout.py       # MOTe error and components (mask mode)
 │   ├── _core_bbox.py   # Analytic bounding-box fast path for MOTe
 │   ├── class_metrics.py# Class-level MOTe decomposition

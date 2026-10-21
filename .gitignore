@@ -80,4 +80,4 @@ logs/
 .env.local
 
 #Allow for assets folder to be tracked
-!src/pymote/assets/**
+!src/mote_error/assets/**

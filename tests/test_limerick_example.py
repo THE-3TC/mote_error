@@ -8,7 +8,7 @@ FileNotFoundError is the failure this suite exists to catch.
 import numpy as np
 import pytest
 
-from pymote import (
+from mote_error import (
     chars_to_region_chars,
     mote,
     extract_line_boxes,
@@ -17,7 +17,7 @@ from pymote import (
     load_limerick_example,
     reconstruct_text,
 )
-from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
 
 EXPECTED_COLUMNS = [

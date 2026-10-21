@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pymote"
+name = "mote_error"
 version = "0.1.0"
 description = "MOTe error (Missing, Overlap, Trespass, and Excess) for Document Layout Analysis, and the Character Error Vector for page-level OCR"
 readme = "README.md"
@@ -90,14 +90,14 @@ paddle-benchmark = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JonnoB/pymote"
-Repository = "https://github.com/JonnoB/pymote"
+Homepage = "https://github.com/THE-3TC/mote_error"
+Repository = "https://github.com/THE-3TC/mote_error"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-pymote = ["assets/**/*"]
+mote_error = ["assets/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

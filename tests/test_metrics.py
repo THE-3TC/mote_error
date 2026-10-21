@@ -2,8 +2,8 @@
 
 import pytest
 import numpy as np
-from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-from pymote.layout import (
+from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from mote_error.layout import (
     coverage,
     missing,
     overlap,
@@ -14,7 +14,7 @@ from pymote.layout import (
     excess,
     mote,
 )
-from pymote.types import MOTeResult
+from mote_error.types import MOTeResult
 from tests.reference_metrics import (
     coverage as ref_coverage,
     overlap as ref_overlap,

@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from pymote.ssu_tagger import SSUTagger, assign_ssu
+from mote_error.ssu_tagger import SSUTagger, assign_ssu
 
 NS = "http://schema.primaresearch.org/PAGE/gts/pagecontent/2010-03-19"
 

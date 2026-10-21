@@ -87,8 +87,8 @@ def _(mo):
 @app.cell
 def _():
     # --- Point these at your data -------------------------------------------------
-    NCSE_IMAGES_DIR = "pymote/data/ncsev2/images"
-    NCSE_GT_CSV = "pymote/data/ncsev2/ncse_testset_bboxes.csv"
+    NCSE_IMAGES_DIR = "mote_error/data/ncsev2/images"
+    NCSE_GT_CSV = "mote_error/data/ncsev2/ncse_testset_bboxes.csv"
 
     # --- Where results are written ------------------------------------------------
     PRED_DIR = "outputs/predictions"
@@ -118,15 +118,15 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from pymote.adapters import (
+    from mote_error.adapters import (
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
         compute_canvas,
     )
-    from pymote.dataset import NCSEDataset
-    from pymote.layout import f1, mean_iou, mote
-    from pymote.types import GTBoxes
-    from pymote.visualisation import compute_mote_masks, visualize_mote_states
+    from mote_error.dataset import NCSEDataset
+    from mote_error.layout import f1, mean_iou, mote
+    from mote_error.types import GTBoxes
+    from mote_error.visualisation import compute_mote_masks, visualize_mote_states
 
     return (
         GTBoxes,
@@ -278,7 +278,7 @@ def _(mo):
     - **Mask path** — a 2-D `gt_ssu_map` of SSU ids plus a list of prediction masks. Needed for
       segmentation models and for `compute_mote_masks`. see section 5.
 
-    All the loaders in `pymote.dataset` return the same annotation structure:
+    All the loaders in `mote_error.dataset` return the same annotation structure:
 
     ```python
     {"x", "y", "width", "height", "class", "ssu_id", "ssu_class", "confidence", "page_id"}
@@ -331,7 +331,7 @@ def _(DEVICE):
     import sys
     from pathlib import Path as _P
 
-    # The layout models live in `models/`, a top-level directory of the pymote repo rather
+    # The layout models live in `models/`, a top-level directory of the mote_error repo rather
     # than part of the installed package. Marimo puts the *notebook's* directory on sys.path,
     # not the repo root, so locate the root by walking up and add it explicitly.
     try:
@@ -345,7 +345,7 @@ def _(DEVICE):
             break
     else:
         raise RuntimeError(
-            "Could not find the pymote repo root (no models/docling_heron.py found "
+            "Could not find the mote_error repo root (no models/docling_heron.py found "
             f"walking up from {_start}). Run this notebook from inside the repo."
         )
 

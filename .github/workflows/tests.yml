@@ -37,7 +37,7 @@ jobs:
     - name: Run tests with coverage
       if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
       run: |
-        pytest tests/ --cov=pymote --cov-report=xml --cov-report=term
+        pytest tests/ --cov=mote_error --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
@@ -68,16 +68,16 @@ jobs:
 
     - name: Check code formatting with Black
       run: |
-        black --check src/pymote/ benchmarks/ tests/ --diff
+        black --check src/mote_error/ benchmarks/ tests/ --diff
 
     - name: Lint with flake8
       run: |
         # Stop the build if there are Python syntax errors or undefined names
-        flake8 src/pymote/ benchmarks/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src/mote_error/ benchmarks/ --count --select=E9,F63,F7,F82 --show-source --statistics
         # Exit-zero treats all errors as warnings
-        flake8 src/pymote/ benchmarks/ --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+        flake8 src/mote_error/ benchmarks/ --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
 
     - name: Type check with mypy
       continue-on-error: true
       run: |
-        mypy src/pymote/ benchmarks/ --ignore-missing-imports
+        mypy src/mote_error/ benchmarks/ --ignore-missing-imports

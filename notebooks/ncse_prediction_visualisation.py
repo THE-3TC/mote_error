@@ -14,9 +14,9 @@ def _():
     from PIL import Image
     import marimo as mo
 
-    from pymote.visualisation import compute_mote_masks, visualize_mote_states
-    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-    from pymote.layout import mote, missing, overlap, trespass, excess, mean_iou, f1
+    from mote_error.visualisation import compute_mote_masks, visualize_mote_states
+    from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from mote_error.layout import mote, missing, overlap, trespass, excess, mean_iou, f1
 
     _results_dir = Path("data/results")
     image_dir = Path.home() / "fakenewslib/data/ncsev2/images"

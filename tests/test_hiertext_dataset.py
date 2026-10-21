@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from pymote.dataset import HierTextDataset
+from mote_error.dataset import HierTextDataset
 
 
 def _make_dataset(tmp_path: Path, gt: dict, image_ids, ext: str = "jpg"):

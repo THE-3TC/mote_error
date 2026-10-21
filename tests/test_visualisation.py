@@ -1,4 +1,4 @@
-"""Tests for pymote.visualisation."""
+"""Tests for mote_error.visualisation."""
 
 import numpy as np
 import pytest
@@ -7,9 +7,9 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for tests
 import matplotlib.figure
 
-from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
-from pymote.types import MaskInstance
-from pymote.visualisation import (
+from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+from mote_error.types import MaskInstance
+from mote_error.visualisation import (
     MIXED_KEY,
     MIXED_LABEL,
     class_palette,

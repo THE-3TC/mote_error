@@ -3,7 +3,7 @@
 import pytest
 import numpy as np
 
-from pymote.class_metrics import (
+from mote_error.class_metrics import (
     coverage_matrix,
     overlap_matrix,
     trespass_matrix,
@@ -12,7 +12,7 @@ from pymote.class_metrics import (
     sum_class_counts,
     finalize_class_counts,
 )
-from pymote.types import MaskInstance, ClassMOTeResult, ClassMOTeCounts
+from mote_error.types import MaskInstance, ClassMOTeResult, ClassMOTeCounts
 
 
 TOLERANCE = 1e-9
@@ -570,7 +570,7 @@ class TestMissingByClass:
         np.testing.assert_allclose(result.missing_rate, [0.0, 0.0])
 
     def test_single_class_rate_matches_scalar_missing(self):
-        from pymote import missing
+        from mote_error import missing
 
         gt = _make_gt_ssu_map(H, W, {1: (0, 4, 0, 10), 2: (6, 10, 0, 6)})
         preds = [_mask(H, W, 0, 3, 0, 7, "A"), _mask(H, W, 7, 10, 2, 9, "A")]

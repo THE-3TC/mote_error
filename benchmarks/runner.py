@@ -20,16 +20,16 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-from pymote.dataset import (
+from mote_error.dataset import (
     NCSEDataset,
     HNLA2013Dataset,
     DocLayNetDataset,
     SpiritualistDataset,
     HierTextDataset,
 )
-from pymote.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
-from pymote.types import MaskInstance
-from pymote.layout import (
+from mote_error.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
+from mote_error.types import MaskInstance
+from mote_error.layout import (
     coverage,
     missing,
     overlap,
@@ -38,7 +38,7 @@ from pymote.layout import (
     mote,
     mean_iou,
 )
-from pymote.map_metric import MAPMetric
+from mote_error.map_metric import MAPMetric
 from PIL import Image
 
 logger = logging.getLogger(__name__)

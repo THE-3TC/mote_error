@@ -83,8 +83,8 @@ def _(mo):
 @app.cell
 def _(os):
     # --- Point these at your data (same as notebook 1) ----------------------------
-    NCSE_IMAGES_DIR = "pymote/data/ncsev2/images"
-    NCSE_GT_CSV = "pymote/data/ncsev2/ncse_testset_bboxes.csv"
+    NCSE_IMAGES_DIR = "mote_error/data/ncsev2/images"
+    NCSE_GT_CSV = "mote_error/data/ncsev2/ncse_testset_bboxes.csv"
 
     # --- Written by notebook 1 ----------------------------------------------------
     PRED_DIR = "outputs/predictions"
@@ -143,7 +143,7 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from pymote.ocr import cdd_decomp, spacer_decomp
+    from mote_error.ocr import cdd_decomp, spacer_decomp
 
     return (
         Image,

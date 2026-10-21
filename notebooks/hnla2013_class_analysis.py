@@ -15,7 +15,7 @@ def _(mo):
     native label vocabulary onto a shared, simplified combined taxonomy (see
     section 1), and computes per-class coverage / overlap / trespass
     matrices plus a derived coverage-precision / coverage-recall /
-    coverage-F1 (per-class, micro-averaged) via `pymote.class_metrics`.
+    coverage-F1 (per-class, micro-averaged) via `mote_error.class_metrics`.
 
     Counts are accumulated across every image with `class_confusion_counts`
     + `sum_class_counts` and normalised once with `finalize_class_counts` —
@@ -33,13 +33,13 @@ def _():
     from pathlib import Path
     import matplotlib.pyplot as plt
 
-    from pymote.adapters import (
+    from mote_error.adapters import (
         boxes_to_gt_ssu_map,
         boxes_to_pred_masks,
         build_ssu_to_class,
         compute_canvas,
     )
-    from pymote.class_metrics import (
+    from mote_error.class_metrics import (
         class_confusion_counts,
         sum_class_counts,
         finalize_class_counts,
@@ -377,7 +377,7 @@ def _(mo):
     predicted-area-normalised) plus a GT-area-normalised recall term that
     isn't otherwise available from `coverage_matrix` alone. This is a
     *pixel/area*-based F1 — distinct from the IoU-threshold, instance-level
-    `f1()` in `pymote.layout`.
+    `f1()` in `mote_error.layout`.
     """)
     return
 

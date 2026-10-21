@@ -22,9 +22,9 @@ sys.path.insert(0, str(project_root))
 
 from models.doclayout_yolo import DocLayoutYOLO
 from models.docling_heron import DoclingLayoutHeron
-from pymote.dataset import HierTextDataset
-from pymote.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
-from pymote.layout import mean_iou, missing, overlap, trespass, excess, mote
+from mote_error.dataset import HierTextDataset
+from mote_error.adapters import compute_canvas, boxes_to_gt_ssu_map, boxes_to_pred_masks
+from mote_error.layout import mean_iou, missing, overlap, trespass, excess, mote
 
 EVAL_MAX_DIM = 2000
 

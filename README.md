@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/JonnoB/pymote/main/docs/pymote_banner.png"
-       alt="pymote" width="700">
+  <img src="https://raw.githubusercontent.com/THE-3TC/mote_error/main/docs/mote_error_banner.svg"
+       alt="mote_error" width="700">
 </p>
 
 
 **Decomposable evaluation metrics for document understanding pipelines — the MOTe error for layout parsing, and the Character Error Vector for page-level OCR**
 
-[![PyPI version](https://img.shields.io/pypi/v/pymote)](https://pypi.org/project/pymote/)
+[![PyPI version](https://img.shields.io/pypi/v/mote_error)](https://pypi.org/project/mote_error/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-> **pymote is the successor to [`cotescore`](https://pypi.org/project/cotescore/).** The layout metric has been reframed from the COTe score into the MOTe error; see [Coming from the COTe score?](#layout-parsing--the-mote-error) below.
+> **mote_error is the successor to [`cotescore`](https://pypi.org/project/cotescore/).** The layout metric has been reframed from the COTe score into the MOTe error; see [Coming from the COTe score?](#layout-parsing--the-mote-error) below.
 
 
 ## Overview
@@ -18,7 +18,7 @@ Document Layout Analysis (DLA) is the process of parsing a page into meaningful 
 
 Document understanding pipelines generally have two stages. The first stage parses the page into individual visual elements or regions, effectively focusing on answering **where is the text?**. The second stage is the Optical Character Recognition, where the text is transcribed in to machine readable format, answering **what does the text say?**. When the output text quality is poor conventional metrics can struggle to identify the root cause. 
 
-The **pymote** library provides two decomposable metrics one for each stage of the pipeline.  
+The **mote_error** library provides two decomposable metrics one for each stage of the pipeline.  
 
 For a conceptual introduction to these metrics there is a blog post on the [COTe score](https://the-3tc.github.io/blog/cote-score/) (the original framing that MOTe reframes as an error), a blog post on the [CEV](https://the-3tc.github.io/blog/cev-score/), and two [tutorials](https://lightning.ai/the3tc/templates/cotescore-library-tutorial) available to run for free on a lightning ai studio (written for `cotescore`).
 
@@ -52,7 +52,7 @@ Because the components separate the stages, the CEV can say whether the transcri
 ## Installation
 
 ```bash
-pip install pymote
+pip install mote_error
 ```
 
 That is all you need to compute MOTe and CEV scores on predictions you already have. Running the layout models themselves requires extra dependencies — see [Optional extras](#optional-extras--running-the-benchmark-models) at the end.
@@ -62,8 +62,8 @@ That is all you need to compute MOTe and CEV scores on predictions you already h
 The library ships with a bundled limerick case study that you can use to try it out immediately.
 
 ```python
-from pymote import mote, load_limerick_example, extract_ssu_boxes
-from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks, compute_canvas
+from mote_error import mote, load_limerick_example, extract_ssu_boxes
+from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks, compute_canvas
 
 # Load the bundled example: ground-truth dict, document image, and example predictions
 ground_truth, image, pred_boxes = load_limerick_example()
@@ -103,15 +103,15 @@ See [`notebooks/limerick_analysis.py`](notebooks/limerick_analysis.py) for a ful
 | `excess(gt_ssu_map, preds)` | Predicted area falling on background, over total background `[0, 1]` |
 | `mote_class(gt_ssu_map, ssu_to_class, preds)` | Per-class interaction matrices and per-GT-class Missing (`ClassMOTeResult`) |
 
-All functions are importable directly from `pymote`:
+All functions are importable directly from `mote_error`:
 
 ```python
-from pymote import mote, missing, coverage, overlap, trespass, excess, mote_class
+from mote_error import mote, missing, coverage, overlap, trespass, excess, mote_class
 ```
 
 `mote` accepts `weight_missing`, `weight_overlap` and `weight_trespass` to reweight the sum; equal weights are the default because each component measures the same spatial area. When ground truth is available as boxes, pass a `GTBoxes` and an `(M, 4)` array of predicted boxes to `mote` to use the analytic fast path, which never rasterises. A page with no SSUs has Missing, Overlap and Trespass of 0.
 
-The conventional instance-matching baselines MOTe is compared against in the paper — `iou`, `mean_iou` and `f1` — remain available from `pymote.layout` if you want to reproduce those comparisons.
+The conventional instance-matching baselines MOTe is compared against in the paper — `iou`, `mean_iou` and `f1` — remain available from `mote_error.layout` if you want to reproduce those comparisons.
 
 For an alternative visual overview of what the different elements of the MOTe error mean please see [`notebooks/metrics_exploration.py`](notebooks/metrics_exploration.py)
 
@@ -140,7 +140,7 @@ From those come the four components — `d_pars` (parsing alone), `d_ocr` (OCR g
 | `text_to_counter(text, mode)` | Build a character (or word, for SpAWER) frequency Counter |
 
 ```python
-from pymote import spacer_decomp, cdd_decomp
+from mote_error import spacer_decomp, cdd_decomp
 
 bags = {"gt": gt_text, "ocr": ocr_of_gt_regions, "total": ocr_of_predicted_regions}
 sp = spacer_decomp(bags)
@@ -153,7 +153,7 @@ Components whose inputs are absent come back as `None` rather than failing. Buil
 ## Visualisation
 
 ```python
-from pymote import compute_mote_masks, visualize_mote_states
+from mote_error import compute_mote_masks, visualize_mote_states
 import matplotlib.pyplot as plt
 
 masks = compute_mote_masks(gt_ssu_map, preds)
@@ -168,13 +168,13 @@ plt.show()
 The library includes loaders for the datasets used in the two papers, all sharing one annotation format:
 
 ```python
-from pymote.dataset import (
+from mote_error.dataset import (
     NCSEDataset, DocLayNetDataset, HNLA2013Dataset,
     SpiritualistDataset, HierTextDataset, DocBankDataset,
 )
 
 # Bundled toy example (no download required)
-from pymote import load_limerick_example
+from mote_error import load_limerick_example
 chars_df, image, pred_boxes = load_limerick_example()
 ```
 
@@ -222,27 +222,27 @@ The benchmarking extras include either PyTorch or PaddlePaddle — **do not inst
 
 | Extra | Use case | GPU framework |
 |---|---|---|
-| `pymote[benchmarks]` | Torch-based DLA models (DocLayout-YOLO, Heron) | PyTorch |
-| `pymote[paddle-benchmark]` | PaddleOCR / PP-DocLayout | PaddlePaddle |
+| `mote_error[benchmarks]` | Torch-based DLA models (DocLayout-YOLO, Heron) | PyTorch |
+| `mote_error[paddle-benchmark]` | PaddleOCR / PP-DocLayout | PaddlePaddle |
 
 ```bash
 # Torch-based benchmarks
-pip install "pymote[benchmarks]"
+pip install "mote_error[benchmarks]"
 
 # PaddlePaddle benchmarks (install PaddlePaddle first, separately)
 # See: https://www.paddlepaddle.org.cn/install/quick
-pip install "pymote[paddle-benchmark]"
+pip install "mote_error[paddle-benchmark]"
 ```
 
-> **Note:** PaddlePaddle must be installed before `pymote[paddle-benchmark]` — it is not listed as a pip dependency because the correct wheel depends on your CUDA version. Follow the [PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/install/quick) to get the right version.
+> **Note:** PaddlePaddle must be installed before `mote_error[paddle-benchmark]` — it is not listed as a pip dependency because the correct wheel depends on your CUDA version. Follow the [PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/install/quick) to get the right version.
 
 ## Questions and Bug Reports
 
-If you have questions, find a bug, or want to request a feature, please [open an issue](https://github.com/JonnoB/pymote/issues) on GitHub.
+If you have questions, find a bug, or want to request a feature, please [open an issue](https://github.com/THE-3TC/mote_error/issues) on GitHub.
 
 ## Citation
 
-If you use pymote in your research, please cite the paper for the metric you used.
+If you use mote_error in your research, please cite the paper for the metric you used.
 
 **MOTe** — layout parsing. MOTe reframes the COTe score from this paper as an error (`MOTe = 1 − COTe`); until the MOTe paper is out, please cite:
 

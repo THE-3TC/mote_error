@@ -695,7 +695,7 @@ def _(Path, pd):
         """
         if cache_path.exists():
             return pd.read_csv(cache_path)
-        from pymote.map_metric import MAPMetric
+        from mote_error.map_metric import MAPMetric
 
         csv_model_names = {
             "DocLayout-YOLO": "YOLO",

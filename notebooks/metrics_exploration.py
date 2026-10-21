@@ -39,8 +39,8 @@ def _():
 
     sys.path.append(os.path.abspath('.'))
 
-    from pymote.layout import mote
-    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from mote_error.layout import mote
+    from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
     return boxes_to_gt_ssu_map, boxes_to_pred_masks, mote, patches, plt
 

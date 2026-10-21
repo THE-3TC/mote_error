@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 from typing import List
 
-from pymote.adapters import hf_instance_seg_to_masks, hf_panoptic_seg_to_masks
-from pymote.types import MaskInstance
+from mote_error.adapters import hf_instance_seg_to_masks, hf_panoptic_seg_to_masks
+from mote_error.types import MaskInstance
 
 from .loader import LayoutModel
 
@@ -65,7 +65,7 @@ class Mask2Former(LayoutModel):
             image_path: Path to the input image.
 
         Returns:
-            List of :class:`~pymote.types.MaskInstance` with masks at the
+            List of :class:`~mote_error.types.MaskInstance` with masks at the
             original image resolution.
         """
         if self.model is None:

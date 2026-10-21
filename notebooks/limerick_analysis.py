@@ -40,7 +40,7 @@ def _():
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
 
-    from pymote import (
+    from mote_error import (
         load_limerick_example,
         extract_ssu_boxes,
         extract_line_boxes,
@@ -50,8 +50,8 @@ def _():
         compute_mote_masks,
         visualize_mote_states,
     )
-    from pymote.layout import f1, iou, mean_iou
-    from pymote.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
+    from mote_error.layout import f1, iou, mean_iou
+    from mote_error.adapters import boxes_to_gt_ssu_map, boxes_to_pred_masks
 
     return (
         boxes_to_gt_ssu_map,
@@ -386,7 +386,7 @@ def _(mo):
 
 @app.cell
 def _(chars):
-    from pymote import chars_to_region_chars
+    from mote_error import chars_to_region_chars
 
     region_chars = chars_to_region_chars(chars)
 

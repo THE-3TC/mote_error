@@ -77,10 +77,10 @@ def _():
     import pandas as pd
     from PIL import Image
 
-    from pymote.class_metrics import class_confusion_counts, finalize_class_counts
-    from pymote.layout import mote
-    from pymote.types import MaskInstance
-    from pymote.visualisation import compute_mote_masks, visualize_mote_states
+    from mote_error.class_metrics import class_confusion_counts, finalize_class_counts
+    from mote_error.layout import mote
+    from mote_error.types import MaskInstance
+    from mote_error.visualisation import compute_mote_masks, visualize_mote_states
     return (
         Image,
         MaskInstance,
