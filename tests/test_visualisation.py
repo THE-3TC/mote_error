@@ -247,7 +247,7 @@ class TestVisualizeMoteStates:
         patches = visualize_mote_states(image, masks, ax=ax)
         matplotlib.pyplot.close(ax.figure)
 
-        assert any(p.get_label() == "Missing (uncovered GT)" for p in patches)
+        assert any(p.get_label() == "Missing" for p in patches)
 
     def test_missing_can_be_suppressed(self):
         image = np.ones((H, W), dtype=np.uint8) * 255
@@ -256,7 +256,7 @@ class TestVisualizeMoteStates:
         patches = visualize_mote_states(image, masks, ax=ax, show_missing=False)
         matplotlib.pyplot.close(ax.figure)
 
-        assert not any(p.get_label() == "Missing (uncovered GT)" for p in patches)
+        assert not any(p.get_label() == "Missing" for p in patches)
 
 
 # ---------------------------------------------------------------------------

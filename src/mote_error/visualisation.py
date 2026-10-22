@@ -47,7 +47,7 @@ MOTE_LABELS: Dict[str, str] = {
     "overlap": "Overlap",
     "trespass": "Trespass",
     "overlap_trespass": "Overlap + Trespass",
-    "missing": "Missing (uncovered GT)",
+    "missing": "Missing",
     "excess": "Excess",
 }
 
@@ -293,9 +293,11 @@ def visualize_mote_states(
         fig = None
         return_fig = False
 
+    # Draw (and legend) order; colours still come from MOTE_COLORS.
+    order = ("missing", "overlap", "trespass", "overlap_trespass", "excess", "covered")
     colors = {
-        state: color
-        for state, color in MOTE_COLORS.items()
+        state: MOTE_COLORS[state]
+        for state in order
         if show_missing or state != "missing"
     }
     legend_patches = _draw_overlays(image, masks, colors, MOTE_LABELS, ax)

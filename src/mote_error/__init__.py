@@ -5,7 +5,7 @@ A library for evaluating document layout analysis models with the MOTe error,
 and page-level OCR with the Character Error Vector.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .layout import mote, missing, coverage, overlap, trespass, excess, iou, mean_iou
 from .ocr import (

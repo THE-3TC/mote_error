@@ -16,7 +16,7 @@ def _():
     from pathlib import Path
     import json
     import marimo as mo
-    import patchworklib as pw
+    #import patchworklib as pw
     from plotnine import (
         aes,
         geom_hline,
@@ -31,16 +31,20 @@ def _():
         facet_wrap,
         element_text,
         element_blank,
-        geom_density,
+        geom_boxplot,
+        geom_errorbar,
+        coord_cartesian,
         scale_colour_manual,
         scale_fill_manual,
     )
     return (
         Path,
         aes,
+        coord_cartesian,
         element_text,
         facet_wrap,
-        geom_density,
+        geom_boxplot,
+        geom_errorbar,
         geom_point,
         ggplot,
         json,
@@ -71,49 +75,41 @@ def _(Path):
     NCSE_json = "ncse/benchmark_all_results.json"
     HNLA_nosssu_json = "hnla2013_unique_ssu/benchmark_all_results.json"
     NCSE_nossu_json = "ncse_unique_ssu/benchmark_all_results.json"
-    spiritualist_json = "spiritualist/benchmark_all_results.json"
+    # The Spiritualist is scored in fakenewslib (notebooks/mote_cer_real_models.py), checked out
+    # next to this repo
+    spiritualist_folder = Path("../fakenewslib/data/positional_uncertainty")
     return (
         HNLA_json,
         HNLA_nosssu_json,
         NCSE_json,
         NCSE_nossu_json,
         doclaynet_json,
-        spiritualist_json,
         ppdoc_results_folder,
+        spiritualist_folder,
         torch_results_folder,
     )
 
 
-@app.cell
-def _():
-    def harmonise_mote_columns(df):
-        """Fill in MOTe columns for results saved before the MOTe reformulation, and the
-        old COTe columns for results saved after it, so either vintage loads the same.
+@app.function
+def harmonise_mote_columns(df):
+    """Fill in MOTe columns for results saved before the MOTe reformulation, and the
+    old COTe columns for results saved after it, so either vintage loads the same.
 
-        With unit weights MOTe = 1 - COTe and Missing = 1 - Coverage exactly.
-        """
-        if "mote" not in df and "cot_score" in df:
-            df["mote"] = 1 - df["cot_score"]
-        if "cot_score" not in df and "mote" in df:
-            df["cot_score"] = 1 - df["mote"]
-        if "missing" not in df and "coverage" in df:
-            df["missing"] = 1 - df["coverage"]
-        if "coverage" not in df and "missing" in df:
-            df["coverage"] = 1 - df["missing"]
-        return df
-
-    return (harmonise_mote_columns,)
+    With unit weights MOTe = 1 - COTe and Missing = 1 - Coverage exactly.
+    """
+    if "mote" not in df and "cot_score" in df:
+        df["mote"] = 1 - df["cot_score"]
+    if "cot_score" not in df and "mote" in df:
+        df["cot_score"] = 1 - df["mote"]
+    if "missing" not in df and "coverage" in df:
+        df["missing"] = 1 - df["coverage"]
+    if "coverage" not in df and "missing" in df:
+        df["coverage"] = 1 - df["missing"]
+    return df
 
 
 @app.cell
-def _(
-    harmonise_mote_columns,
-    json,
-    np,
-    pd,
-    ppdoc_results_folder,
-    torch_results_folder,
-):
+def _(json, np, pd, ppdoc_results_folder, torch_results_folder):
 
     def create_results_table(filename):
         MODEL_NAME_MAP = {
@@ -136,8 +132,8 @@ def _(
         out_df = harmonise_mote_columns(pd.concat(out_df, ignore_index=False))
         out_df = out_df.loc[
             :, [
-                "cot_score",
-                "coverage",
+                "mote",
+                "missing",
                 "overlap",
                 "trespass",
                 "excess",
@@ -151,10 +147,10 @@ def _(
         return out_df
 
     def df_to_latex_md(df, caption, label, cer=None):
-        """cer: per-model page-mean CER bounds (cer_lo, cer_hi); if None they come from the mean C, O, T."""
+        """cer: per-model page-mean CER bounds (cer_lo, cer_hi); if None they come from the mean M, O, T."""
         col_rename = {
-            "cot_score": "COTe",
-            "coverage": "Coverage",
+            "mote": "MOTe",
+            "missing": "Missing",
             "overlap": "Overlap",
             "trespass": "Trespass",
             "excess": "Excess",
@@ -164,8 +160,8 @@ def _(
         }
 
         col_best = {
-            "cot_score": "high",
-            "coverage": "high",
+            "mote": "low",
+            "missing": "low",
             "overlap": "low",
             "trespass": "low",
             "excess": "low",
@@ -182,14 +178,15 @@ def _(
             lower_cols=lower_cols,
             fmt="{:.2f}",
         )
-        # Predicted CER range [max(1-C, O), 1-C+O+2T]
+        # Predicted CER range [max(M, O), M+O+2T]
         if cer is None:
-            _c, _o, _t = (df[k].astype(float) for k in ["coverage", "overlap", "trespass"])
-            _cer_lo, _cer_hi = np.maximum(1 - _c, _o), 1 - _c + _o + 2 * _t
+            _m, _o, _t = (df[k].astype(float) for k in ["missing", "overlap", "trespass"])
+            _cer_lo, _cer_hi = np.maximum(_m, _o), _m + _o + 2 * _t
         else:
             _cer = cer.set_axis(cer.index.astype(str)).reindex(df.index)
             _cer_lo, _cer_hi = _cer["cer_lo"], _cer["cer_hi"]
-        df_fmt["CER"] = [f"{lo:.2f}--{hi:.2f}" for lo, hi in zip(_cer_lo, _cer_hi)]
+        df_fmt["P-CER"] = [f"{lo:.2f}--{hi:.2f}" for lo, hi in zip(_cer_lo, _cer_hi)]
+        caption = f"{caption}. P-CER is the estimated parsing-induced CER."
         latex = latex_table(df_fmt, caption=caption, label=label, echo=False)
 
         return f"### LaTeX Table Output\n```latex\n{latex}\n```"
@@ -231,7 +228,7 @@ def _(mo):
     mo.md(r"""
     ## SSU vs no SSU
 
-    Only Trespass depends on the SSU grouping (Coverage, Overlap and Excess are
+    Only Trespass depends on the SSU grouping (Missing, Overlap and Excess are
     identical under both ground truths), so only Trespass is compared here.
     $\Delta$ is no SSU minus SSU.
     """)
@@ -303,122 +300,6 @@ def _(HNLA2013_ssu_comparison_df, mo, ssu_comparison_latex_md):
     return
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Combined SSU table (NCSE and HNLA2013)
-
-    One table for both datasets. Bold marks the best value within each dataset.
-    """)
-    return
-
-
-@app.cell
-def _(HNLA2013_ssu_comparison_df, NCSE_ssu_comparison_df, mo, pd):
-    from latex_tables import bold_best_cols as _bold_best_cols, latex_table as _latex_table
-
-    _cols = ["SSU", "No SSU", r"Difference"]
-    _blocks = []
-    for _dataset, _df in [("NCSE", NCSE_ssu_comparison_df), ("HNLA2013", HNLA2013_ssu_comparison_df)]:
-        # Bold per dataset block, not across the whole column
-        _fmt = _bold_best_cols(
-            _df[_cols], lower_cols=_cols, fmt="{:.2f}"
-        ).rename_axis("Model").reset_index()
-        _fmt.insert(0, "Dataset", [_dataset] + [""] * (len(_fmt) - 1))
-        _blocks.append(_fmt)
-    ssu_combined_df = pd.concat(_blocks, ignore_index=True).set_index("Dataset")
-
-    _latex = _latex_table(
-        ssu_combined_df,
-        caption=(
-            "Trespass with and without SSU grouping of the ground truth. "
-            r"$\Delta$ Trespass is no SSU minus SSU. Coverage, Overlap and Excess "
-            "are unaffected by the grouping."
-        ),
-        label="tab:ssu_impact",
-        echo=False,
-    ).replace("\nHNLA2013 &", "\n\\midrule\nHNLA2013 &")
-    mo.vstack([ssu_combined_df, mo.md(f"### LaTeX Table Output\n```latex\n{_latex}\n```")])
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Dataset-level Spearman correlation between metrics
-
-    Each observation is one model's dataset-level score (5 models per dataset, SSU ground
-    truth). Per dataset this is only $n=5$, so a single swapped pair moves $\rho$ by 0.1 and
-    only $|\rho| = 1$ reaches $p < 0.05$; the pooled value uses all $n=15$ model-dataset pairs.
-    """)
-    return
-
-
-@app.cell
-def _(HNLA2013_df, NCSE_df, doclaynet_df, pd):
-    CORR_METRICS = {"cot_score": "COTe", "mean_iou": "IoU", "f1_50": "F1@50", "map": "mAP"}
-
-    dataset_level_df = pd.concat(
-        [
-            doclaynet_df.assign(dataset="DocLayNet"),
-            HNLA2013_df.assign(dataset="HNLA2013"),
-            NCSE_df.assign(dataset="NCSE"),
-        ]
-    ).rename(columns=CORR_METRICS)[["dataset", *CORR_METRICS.values()]]
-
-    # Pooled matrix across all 15 model-dataset pairs
-    pooled_spearman_df = (
-        dataset_level_df[list(CORR_METRICS.values())].astype(float).corr(method="spearman")
-    )
-
-    # COTe against each other metric, per dataset and pooled
-    _rows = {
-        _name: _df[list(CORR_METRICS.values())].astype(float).corr(method="spearman").loc["COTe"]
-        for _name, _df in [*dataset_level_df.groupby("dataset"), ("All", dataset_level_df)]
-    }
-    cote_spearman_df = pd.DataFrame(_rows).T.drop(columns="COTe").rename_axis("Dataset")
-    cote_spearman_df.columns = [f"COTe vs {_c}" for _c in cote_spearman_df.columns]
-    pooled_spearman_df
-    return cote_spearman_df, pooled_spearman_df
-
-
-@app.cell
-def _(cote_spearman_df):
-    cote_spearman_df
-    return
-
-
-@app.cell
-def _(cote_spearman_df, mo, pooled_spearman_df):
-    from latex_tables import latex_table as _latex_table
-
-    _pooled = pooled_spearman_df.map("{:.2f}".format).rename_axis("")
-    _pooled_latex = _latex_table(
-        _pooled,
-        caption=(
-            "Spearman correlation between dataset-level metrics, pooled over all "
-            "model-dataset pairs ($n=15$)"
-        ),
-        label="tab:spearman_pooled",
-        echo=False,
-    )
-    _per_dataset = cote_spearman_df.map("{:.2f}".format)
-    _per_dataset_latex = _latex_table(
-        _per_dataset,
-        caption=(
-            "Spearman correlation between dataset-level COTe and the other metrics, per "
-            "dataset ($n=5$ models) and pooled ($n=15$)"
-        ),
-        label="tab:spearman_cote",
-        echo=False,
-    )
-    mo.md(
-        f"### LaTeX Table Output\n```latex\n{_pooled_latex}\n```\n\n"
-        f"```latex\n{_per_dataset_latex}\n```"
-    )
-    return
-
-
 @app.cell
 def _(HNLA2013_df, NCSE_df, doclaynet_df, pd):
     all_datasets = pd.concat(
@@ -436,7 +317,7 @@ def _(HNLA2013_df, NCSE_df, doclaynet_df, pd):
 @app.cell
 def _(aes, all_datasets, geom_point, ggplot):
     (
-        ggplot(all_datasets, aes(x="cot_score", y="mean_iou", colour="index", shape="dataset"))
+        ggplot(all_datasets, aes(x="mote", y="mean_iou", colour="index", shape="dataset"))
         + geom_point()
     ).draw()
     return
@@ -493,42 +374,60 @@ def _(NCSE_df, df_to_latex_md, mo, page_cer_mean_df):
 
 
 @app.cell
-def _(
-    create_results_table,
-    df_to_latex_md,
-    mo,
-    ppdoc_results_folder,
-    spiritualist_json,
-    torch_results_folder,
-):
-    # Kept out of the cross-dataset analyses above; only the results table for now.
-    # No per-page results are saved, so its CER bounds come from the mean C, O, T.
-    if not any((_f / spiritualist_json).exists() for _f in [ppdoc_results_folder, torch_results_folder]):
-        _out = mo.md(
-            "**Spiritualist results not found.** Run `scripts/benchmark_spiritualist.py` "
-            "with `--output data/results/results_pytorch/spiritualist` (and "
-            "`results_ppdoc/spiritualist` for the PPDoc models)."
-        )
-    else:
-        spiritualist_df = create_results_table(spiritualist_json)
-        _out = mo.vstack(
-            [
-                spiritualist_df,
-                mo.md(
-                    df_to_latex_md(
-                        spiritualist_df,
-                        caption="Model results for the Spiritualist",
-                        label="tab:res_spiritualist",
-                    )
-                ),
-            ]
-        )
-    _out
+def _(np, pd, spiritualist_folder):
+    # Per-page scores against the GT lines grouped into article SSUs, and per-model mAP and
+    # F1@50 pooled over every box, as for the other datasets. Written by fakenewslib's
+    # notebooks/mote_cer_real_models.py
+    _model_names = {
+        "DocLayout-YOLO": "YOLO",
+        "DoclingLayoutHeron": "Heron",
+        "PPDocLayout-L": "PPDoc-L",
+        "PPDocLayout-M": "PPDoc-M",
+        "PPDocLayout-S": "PPDoc-S",
+    }
+    spiritualist_pages_df = pd.read_parquet(spiritualist_folder / "mote_cer_spirit_results.parquet")
+    spiritualist_pooled_df = pd.read_parquet(spiritualist_folder / "mote_cer_spirit_pooled.parquet")
+    for _df in [spiritualist_pages_df, spiritualist_pooled_df]:
+        _df["model"] = _df["model"].map(lambda x: _model_names.get(x, x))
+    # Predicted CER bounds per page: [max(M, O), M+O+2T]
+    spiritualist_pages_df["cer_lo"] = np.maximum(
+        spiritualist_pages_df["missing"], spiritualist_pages_df["overlap"]
+    )
+    spiritualist_pages_df["cer_hi"] = (
+        spiritualist_pages_df["missing"]
+        + spiritualist_pages_df["overlap"]
+        + 2 * spiritualist_pages_df["trespass"]
+    )
+    return spiritualist_pages_df, spiritualist_pooled_df
+
+
+@app.cell
+def _(df_to_latex_md, mo, spiritualist_pages_df, spiritualist_pooled_df):
+    # Kept out of the cross-dataset analyses below apart from the box plots
+    _means = spiritualist_pages_df.groupby("model")[
+        ["mote", "missing", "overlap", "trespass", "excess", "mean_iou", "cer_lo", "cer_hi"]
+    ].mean()
+    spiritualist_df = _means.drop(columns=["cer_lo", "cer_hi"]).join(
+        spiritualist_pooled_df.set_index("model")[["map", "f1_50"]]
+    ).sort_index()
+    mo.vstack(
+        [
+            spiritualist_df,
+            mo.md(
+                df_to_latex_md(
+                    spiritualist_df,
+                    caption="Model results for the Spiritualist",
+                    label="tab:res_spiritualist",
+                    cer=_means[["cer_lo", "cer_hi"]],
+                )
+            ),
+        ]
+    )
     return
 
 
 @app.cell
-def _(Path, harmonise_mote_columns, json, pd):
+def _(Path, json, pd):
 
     def load_results_to_dataframe(base_path: str) -> pd.DataFrame:
         """
@@ -619,13 +518,13 @@ def _(load_results_to_dataframe, pd):
 
 @app.cell
 def _(NCSE_comparison_df, aes, geom_point, ggplot):
-    (ggplot(NCSE_comparison_df, aes(y="coverage", x="overlap", color="model")) + geom_point()).draw()
+    (ggplot(NCSE_comparison_df, aes(y="missing", x="overlap", color="model")) + geom_point()).draw()
     return
 
 
 @app.cell
 def _(NCSE_comparison_df, aes, geom_point, ggplot):
-    (ggplot(NCSE_comparison_df, aes(y="coverage", x="trespass", color="model")) + geom_point()).draw()
+    (ggplot(NCSE_comparison_df, aes(y="missing", x="trespass", color="model")) + geom_point()).draw()
     return
 
 
@@ -663,23 +562,17 @@ def _(doclaynet_comparison_df):
 
 @app.cell
 def _(NCSE_comparison_df, aes, geom_point, ggplot):
-    (ggplot(NCSE_comparison_df, aes(x="cot_score", y="mean_iou", colour="model")) + geom_point()).draw()
+    (ggplot(NCSE_comparison_df, aes(x="mote", y="mean_iou", colour="model")) + geom_point()).draw()
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Distribution of page-level COTe
+    # Distribution of page-level MOTe and F1
 
-    Density of per-page COTe for every model, one panel per dataset (SSU ground truth),
-    and the mean vs median per model. If the two disagree in model ranking, the headline
-    (mean) results are being driven by a tail of very good or very bad pages rather than
-    typical performance.
-
-    Each is shown twice: on the raw scores, and with COTe floored at 0. A page scoring 0
-    is equivalent to making no predictions at all, so the floor stops pages where the
-    predictions are worse than nothing from dominating the mean.
+    Per-page MOTe and F1@50 for every model, one panel per dataset (SSU ground truth). F1@50
+    is scored per page with the same COCO matching as the pooled F1@50 in the results tables.
     """)
     return
 
@@ -753,7 +646,7 @@ def _(
     # Fixed categorical order so each model keeps its colour across every figure
     MODEL_COLOURS = dict(zip(MODEL_ORDER, ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]))
 
-    page_cote_df = pd.concat(
+    page_mote_df = pd.concat(
         [
             doclaynet_comparison_df.assign(dataset="DocLayNet"),
             HNLA_comparison_df.assign(dataset="HNLA2013"),
@@ -762,41 +655,22 @@ def _(
         ignore_index=True,
     )[
         [
-            "dataset", "model", "filename", "cot_score", "coverage", "overlap",
+            "dataset", "model", "filename", "mote", "missing", "overlap",
             "trespass", "excess", "mean_iou", "f1_50",
         ]
     ]
-    page_cote_df = page_cote_df.merge(page_map_df, on=["dataset", "model", "filename"], how="left")
-    page_cote_df["cot_score_floored"] = page_cote_df["cot_score"].clip(lower=0)
-    # Predicted CER bounds per page: [max(1-C, O), 1-C+O+2T]
-    page_cote_df["cer_lo"] = np.maximum(1 - page_cote_df["coverage"], page_cote_df["overlap"])
-    page_cote_df["cer_hi"] = (
-        1 - page_cote_df["coverage"] + page_cote_df["overlap"] + 2 * page_cote_df["trespass"]
+    page_mote_df = page_mote_df.merge(page_map_df, on=["dataset", "model", "filename"], how="left")
+    # Predicted CER bounds per page: [max(M, O), M+O+2T]
+    page_mote_df["cer_lo"] = np.maximum(page_mote_df["missing"], page_mote_df["overlap"])
+    page_mote_df["cer_hi"] = (
+        page_mote_df["missing"] + page_mote_df["overlap"] + 2 * page_mote_df["trespass"]
     )
-    page_cote_df["dataset"] = pd.Categorical(page_cote_df["dataset"], DATASET_ORDER)
-    page_cote_df["model"] = pd.Categorical(page_cote_df["model"], MODEL_ORDER)
-    page_cer_mean_df = page_cote_df.groupby(["dataset", "model"], observed=True)[
+    page_mote_df["dataset"] = pd.Categorical(page_mote_df["dataset"], DATASET_ORDER)
+    page_mote_df["model"] = pd.Categorical(page_mote_df["model"], MODEL_ORDER)
+    page_cer_mean_df = page_mote_df.groupby(["dataset", "model"], observed=True)[
         ["cer_lo", "cer_hi"]
     ].mean()
-    return MODEL_COLOURS, MODEL_ORDER, page_cer_mean_df, page_cote_df
-
-
-@app.cell
-def _(mo, page_cote_df):
-    # Median page-level results; Spiritualist is absent as only its dataset means are saved
-    _median_df = page_cote_df.groupby(["dataset", "model"], observed=True)[
-        [
-            "cot_score", "coverage", "overlap", "trespass", "excess", "mean_iou", "map", "f1_50",
-            "cer_lo", "cer_hi",
-        ]
-    ].median()
-    mo.vstack(
-        [
-            mo.vstack([mo.md(f"### {_ds} (median)"), _median_df.loc[_ds]])
-            for _ds in _median_df.index.get_level_values("dataset").unique()
-        ]
-    )
-    return
+    return MODEL_COLOURS, MODEL_ORDER, page_cer_mean_df, page_mote_df
 
 
 @app.cell
@@ -805,312 +679,81 @@ def _(
     MODEL_ORDER,
     Path,
     aes,
+    coord_cartesian,
     element_text,
     facet_wrap,
-    geom_density,
+    geom_boxplot,
+    geom_errorbar,
     ggplot,
     labs,
-    mo,
-    page_cote_df,
-    scale_colour_manual,
+    page_mote_df,
+    pd,
     scale_fill_manual,
+    spiritualist_pages_df,
     theme,
     theme_minimal,
 ):
-    def cote_density_plot(score_col, x_label, filename):
-        """Density of `score_col` per model, one panel per dataset; saved to data/figures."""
+    _box_df = pd.concat(
+        [
+            page_mote_df[["dataset", "model", "mote", "f1_50"]].astype({"dataset": str, "model": str}),
+            spiritualist_pages_df[["model", "mote", "f1_50"]].assign(dataset="Spiritualist"),
+        ],
+        ignore_index=True,
+    )
+    _box_df["dataset"] = pd.Categorical(
+        _box_df["dataset"], ["Spiritualist", "NCSE", "HNLA2013", "DocLayNet"]
+    )
+    _box_df["model"] = pd.Categorical(_box_df["model"], MODEL_ORDER)
+
+    def score_boxplot(score_col, y_label, filename, y_max=None):
+        """Box plot of `score_col` per model, one panel per dataset, with the mean as a dashed
+        line; saved to data/figures. y_max zooms the axis without dropping any pages from the
+        boxes or means."""
+        means = (
+            _box_df.groupby(["dataset", "model"], observed=True)[score_col].mean().rename("mean").reset_index()
+        )
         plot = (
-            ggplot(page_cote_df, aes(x=score_col, colour="model"))
-            + geom_density(alpha=0.15, size=0.7)
-            + facet_wrap("~dataset", ncol=1, scales="free_y")
-            + scale_colour_manual(values=MODEL_COLOURS)
+            ggplot(_box_df, aes(x="model", y=score_col, fill="model"))
+            + geom_boxplot(outlier_size=0.8, outlier_alpha=0.5)
+            + geom_errorbar(
+                aes(x="model", ymin="mean", ymax="mean"),
+                data=means,
+                inherit_aes=False,
+                width=0.75,
+                linetype="dashed",
+                size=0.7,
+            )
+            + facet_wrap("~dataset", ncol=2)
             + scale_fill_manual(values=MODEL_COLOURS)
-            + labs(x=x_label, y="Density", colour="Model", fill="Model")
+            + labs(x="Model", y=y_label)
             + theme_minimal()
             + theme(
-                figure_size=(6, 8),
-                legend_position="bottom",
+                figure_size=(8, 6),
+                legend_position="none",
                 strip_text=element_text(size=11, weight="bold"),
             )
         )
+        if y_max is not None:
+            plot += coord_cartesian(ylim=(0, y_max))
         out_dir = Path("data/figures/analysing_results")
         out_dir.mkdir(parents=True, exist_ok=True)
         plot.save(out_dir / filename, dpi=300, verbose=False)
         # Return a matplotlib figure: marimo does not display plotnine's own PNG output
         return plot.draw()
 
-    def mean_median_table(score_col, higher_is_better=True):
-        """Mean, median, their gap and the model rank under each, per dataset and model."""
-        df = (
-            page_cote_df.groupby(["dataset", "model"], observed=True)[score_col]
-            .agg(Mean="mean", Median="median")
-            .reset_index()
-        )
-        df["Mean $-$ Median"] = df["Mean"] - df["Median"]
-        for col in ["Mean", "Median"]:
-            df[f"Rank ({col.lower()})"] = (
-                df.groupby("dataset", observed=True)[col]
-                .rank(ascending=not higher_is_better, method="min")
-                .astype(int)
-            )
-        df["model"] = df["model"].astype(str)
-        return df.sort_values(
-            ["dataset", "model"], key=lambda c: c.map(MODEL_ORDER.index) if c.name == "model" else c
-        ).rename(columns={"dataset": "Dataset", "model": "Model"})
-
-    def mean_median_latex_md(df, caption, label):
-        from latex_tables import latex_table
-
-        df = df.copy()
-        for col in ["Mean", "Median", "Mean $-$ Median"]:
-            df[col] = df[col].map("{:.2f}".format)
-        # Print each dataset name once, on the first row of its block
-        df["Dataset"] = df["Dataset"].astype(str).where(~df["Dataset"].duplicated(), "")
-        latex = latex_table(df.set_index("Dataset"), caption=caption, label=label, echo=False)
-        return mo.md(f"### LaTeX Table Output\n```latex\n{latex}\n```")
-    return cote_density_plot, mean_median_latex_md, mean_median_table
+    return (score_boxplot,)
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Raw page-level COTe
-    """)
+@app.cell
+def _(score_boxplot):
+    # The long DocLayNet tail (up to ~3.6) is cut off by the zoom, not removed from the boxes
+    score_boxplot("mote", "Page-level MOTe", "mote_boxplot_by_dataset.png", y_max=1.5)
     return
 
 
 @app.cell
-def _(cote_density_plot):
-    cote_density_plot("cot_score", "Page-level COTe", "cote_density_by_dataset.png")
-    return
-
-
-@app.cell
-def _(mean_median_table):
-    cote_mean_median_df = mean_median_table("cot_score")
-    cote_mean_median_df
-    return (cote_mean_median_df,)
-
-
-@app.cell
-def _(cote_mean_median_df, mean_median_latex_md):
-    mean_median_latex_md(
-        cote_mean_median_df,
-        caption="Mean and median page-level COTe per model and dataset",
-        label="tab:cote_mean_median",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Page-level COTe floored at 0
-    """)
-    return
-
-
-@app.cell
-def _(cote_density_plot):
-    cote_density_plot(
-        "cot_score_floored",
-        "Page-level COTe (floored at 0)",
-        "cote_floored_density_by_dataset.png",
-    )
-    return
-
-
-@app.cell
-def _(mean_median_table):
-    cote_floored_mean_median_df = mean_median_table("cot_score_floored")
-    cote_floored_mean_median_df
-    return (cote_floored_mean_median_df,)
-
-
-@app.cell
-def _(cote_floored_mean_median_df, mean_median_latex_md):
-    mean_median_latex_md(
-        cote_floored_mean_median_df,
-        caption="Mean and median page-level COTe per model and dataset, with COTe floored at 0",
-        label="tab:cote_floored_mean_median",
-    )
-    return
-
-
-@app.cell
-def _(page_cote_df):
-    # Share of pages each model scores below 0, i.e. the pages the floor changes
-    (
-        page_cote_df.assign(below_zero=page_cote_df["cot_score"] < 0)
-        .groupby(["dataset", "model"], observed=True)["below_zero"]
-        .mean()
-        .unstack("dataset")
-        .round(3)
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Mean vs median for IoU, F1@50 and mAP
-
-    The same comparison for the other metrics, all per page. mAP is computed per page from
-    the prediction CSVs (class-agnostic, as in the benchmark); its mean over pages is not the
-    dataset-level mAP in the results tables, which pools every box before ranking. Likewise
-    the F1@50 mean is the page mean (`f1_50_page_mean`), not the pooled F1@50.
-    """)
-    return
-
-
-@app.cell
-def _(mean_median_table):
-    # mAP is undefined (NaN) on the 5 DocLayNet pages with no ground truth; they are skipped
-    OTHER_METRICS = {"mean_iou": "IoU", "f1_50": "F1@50", "map": "mAP"}
-    metric_mean_median = {
-        _label: mean_median_table(_col) for _col, _label in OTHER_METRICS.items()
-    }
-    return (metric_mean_median,)
-
-
-@app.cell
-def _(metric_mean_median):
-    metric_mean_median["IoU"]
-    return
-
-
-@app.cell
-def _(metric_mean_median):
-    metric_mean_median["F1@50"]
-    return
-
-
-@app.cell
-def _(metric_mean_median):
-    metric_mean_median["mAP"]
-    return
-
-
-@app.cell
-def _(mean_median_latex_md, metric_mean_median, mo):
-    mo.vstack(
-        [
-            mean_median_latex_md(
-                _df,
-                caption=f"Mean and median page-level {_label} per model and dataset",
-                label=f"tab:{_label.lower().replace('@', '')}_mean_median",
-            )
-            for _label, _df in metric_mean_median.items()
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Mean vs median for the COTe components and CER bounds
-
-    Coverage, Overlap, Trespass and Excess, plus the per-page predicted CER bounds
-    $\max(1-C, O)$ and $1-C+O+2T$. Only Coverage is higher-is-better, so the ranks for the
-    rest put the lowest value first.
-    """)
-    return
-
-
-@app.cell
-def _(mean_median_table):
-    # (label, higher is better)
-    COMPONENT_METRICS = {
-        "coverage": ("Coverage", True),
-        "overlap": ("Overlap", False),
-        "trespass": ("Trespass", False),
-        "excess": ("Excess", False),
-        "cer_lo": ("CER lower", False),
-        "cer_hi": ("CER upper", False),
-    }
-    component_mean_median = {
-        _label: mean_median_table(_col, higher_is_better=_hib)
-        for _col, (_label, _hib) in COMPONENT_METRICS.items()
-    }
-    return (component_mean_median,)
-
-
-@app.cell
-def _(component_mean_median, mo):
-    mo.vstack(
-        [
-            mo.vstack([mo.md(f"### {_label}"), _df])
-            for _label, _df in component_mean_median.items()
-        ]
-    )
-    return
-
-
-@app.cell
-def _(component_mean_median, mean_median_latex_md, mo):
-    mo.vstack(
-        [
-            mean_median_latex_md(
-                _df,
-                caption=f"Mean and median page-level {_label} per model and dataset",
-                label=f"tab:{_label.lower().replace(' ', '_')}_mean_median",
-            )
-            for _label, _df in component_mean_median.items()
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Summary: mean $-$ median for every metric
-
-    One row per model and dataset; a $^\dagger$ marks where the model's rank differs
-    between mean and median.
-    """)
-    return
-
-
-@app.cell
-def _(
-    MODEL_ORDER,
-    component_mean_median,
-    cote_mean_median_df,
-    metric_mean_median,
-    mo,
-    pd,
-):
-    from latex_tables import latex_table as _latex_table
-
-    # CER bounds are left out to keep the table printable
-    _components = {
-        _k: _v for _k, _v in component_mean_median.items() if not _k.startswith("CER")
-    }
-    _all = {"COTe": cote_mean_median_df, **_components, **metric_mean_median}
-    _gap = {}
-    for _label, _df in _all.items():
-        _d = _df.set_index(["Dataset", "Model"])
-        _flag = (_d["Rank (mean)"] != _d["Rank (median)"]).map({True: "$^\\dagger$", False: ""})
-        _gap[_label] = _d["Mean $-$ Median"].map("{:.2f}".format) + _flag
-    mean_median_gap_df = pd.DataFrame(_gap).reset_index()
-    mean_median_gap_df = mean_median_gap_df.sort_values(
-        ["Dataset", "Model"],
-        key=lambda c: c.map(MODEL_ORDER.index) if c.name == "Model" else c.astype(str),
-    )
-    _fmt = mean_median_gap_df.copy()
-    _fmt["Dataset"] = _fmt["Dataset"].astype(str).where(~_fmt["Dataset"].duplicated(), "")
-    _latex = _latex_table(
-        _fmt.set_index("Dataset"),
-        caption=(
-            "Mean minus median of page-level scores per model and dataset. "
-            "$^\\dagger$ marks a model whose rank within the dataset differs between mean and median."
-        ),
-        label="tab:mean_median_gap",
-        echo=False,
-    )
-    mo.vstack([mean_median_gap_df, mo.md(f"### LaTeX Table Output\n```latex\n{_latex}\n```")])
+def _(score_boxplot):
+    score_boxplot("f1_50", "Page-level F1@50", "f1_boxplot_by_dataset.png")
     return
 
 
@@ -1132,7 +775,7 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_ORDER, Path, np, page_cote_df, pd):
+def _(MODEL_ORDER, Path, np, page_mote_df, pd):
     _csv_model_names = {
         "DocLayout-YOLO": "YOLO",
         "DoclingLayoutHeron": "Heron",
@@ -1158,7 +801,7 @@ def _(MODEL_ORDER, Path, np, page_cote_df, pd):
 
     # Pages with neither GT nor predictions have no rows in the CSVs; inner join drops
     # them along with the pages that only lack GT (filtered below)
-    pred_gt_df = page_cote_df.astype({"dataset": str, "model": str}).merge(
+    pred_gt_df = page_mote_df.astype({"dataset": str, "model": str}).merge(
         _counts, on=["dataset", "model", "filename"], how="inner"
     )
     pred_gt_df = pred_gt_df[pred_gt_df["n_gt"] > 0].copy()
@@ -1181,8 +824,8 @@ def _(MODEL_ORDER, Path, np, page_cote_df, pd):
 @app.cell
 def _(pd, pred_gt_df):
     RATIO_CORR_METRICS = {
-        "cot_score": "COTe",
-        "coverage": "Coverage",
+        "mote": "MOTe",
+        "missing": "Missing",
         "overlap": "Overlap",
         "trespass": "Trespass",
         "excess": "Excess",
