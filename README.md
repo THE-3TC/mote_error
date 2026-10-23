@@ -244,14 +244,14 @@ If you have questions, find a bug, or want to request a feature, please [open an
 
 If you use mote_error in your research, please cite the paper for the metric you used.
 
-**MOTe** — layout parsing. MOTe reframes the COTe score from this paper as an error (`MOTe = 1 − COTe`); until the MOTe paper is out, please cite:
+**MOTe** — layout parsing. MOTe reframes the COTe score from this paper as an error (`MOTe = 1 − COTe`); until the MOTe preprint is on arxiv, please cite:
 
-Bourne, Jonathan, Mwiza Simbeye, and Ishtar Govia. “The COTe Score: A Decomposable Framework for Evaluating Document Layout Analysis Models.” arXiv:2603.12718. Preprint, arXiv, March 13, 2026. https://doi.org/10.48550/arXiv.2603.12718.
+Bourne, Jonathan, Mwiza Simbeye, and Ishtar Govia. “MOTe Error: A Decomposable Framework for Evaluating Document Layout Analysis Models.” arXiv:2603.12718. Preprint, arXiv, March 13, 2026. https://doi.org/10.48550/arXiv.2603.12718.
 
 
 ```bibtex
 @misc{bourne2026cote,
-  title         = {The {COTe} Score: A Decomposable Framework for Evaluating {Document Layout Analysis} Models},
+  title         = {{MOTe} Error: A Decomposable Framework for Evaluating {Document Layout Analysis} Models},
   author        = {Bourne, Jonathan and Simbeye, Mwiza and Govia, Ishtar},
   year          = {2026},
   month         = mar,
