@@ -20,7 +20,7 @@ Document understanding pipelines generally have two stages. The first stage pars
 
 The **mote_error** library provides two decomposable metrics one for each stage of the pipeline.  
 
-For a conceptual introduction to these metrics there is a blog post on the [COTe score](https://the-3tc.github.io/blog/cote-score/) (the original framing that MOTe reframes as an error), a blog post on the [CEV](https://the-3tc.github.io/blog/cev-score/), and two [tutorials](https://lightning.ai/the3tc/templates/cotescore-library-tutorial) available to run for free on a lightning ai studio (written for `cotescore`).
+For a conceptual introduction to these metrics there is a blog post on the [MOTe error](https://the-3tc.github.io/blog/mote-error/), a blog post on the [CEV](https://the-3tc.github.io/blog/cev-score/), and two [tutorials](https://lightning.ai/the3tc/templates/cotescore-library-tutorial) available to run for free on a lightning ai studio (written for `cotescore`).
 
 ### Layout parsing — the MOTe error
 
